@@ -11,7 +11,7 @@ read -p "Voulez-vous pousser sur cette branche ($CURRENT_BRANCH) ? [O/n] " choic
 
 case "$choice" in
   [nN]*)
-    read -p "➡️  Entrez le nom de la branche sur laquelle pousser : " TARGET_BRANCH
+    read -p "Entrez le nom de la branche sur laquelle pousser : " TARGET_BRANCH
     ;;
   *)
     TARGET_BRANCH=$CURRENT_BRANCH
