@@ -5,7 +5,7 @@ set -e
 
 # Vérification d'openssl
 if ! command -v openssl >/dev/null 2>&1; then
-    echo "❌ openssl n'est pas installé"
+    echo "openssl n'est pas installé"
     exit 1
 fi
 
@@ -17,19 +17,19 @@ echo "🔐 Exécution du pre-commit hook - Chiffrement des fichiers values.*.yam
 VALUES_FILES=$(git diff --cached --name-only | grep -E "values.*\.yaml$")
 
 if [ -z "$VALUES_FILES" ]; then
-    echo "ℹ️  Aucun fichier values.*.yaml staged pour commit"
+    echo "Aucun fichier values.*.yaml staged pour commit"
     exit 0
 fi
 
-echo "📄 Fichiers values.*.yaml trouvés dans le staging area:"
+echo "Fichiers values.*.yaml trouvés dans le staging area:"
 echo "$VALUES_FILES"
 
 # mot de passe
 if [ -n "$ENCRYPTION_PASSWORD" ]; then
-    echo "🔑 Utilisation du mot de passe depuis la variable d'environnement"
+    echo "Utilisation du mot de passe depuis la variable d'environnement"
     PASSWORD="$ENCRYPTION_PASSWORD"
 else
-    echo "🔑 Veuillez entrer le mot de passe pour le chiffrement:"
+    echo "Veuillez entrer le mot de passe pour le chiffrement:"
     
     exec < /dev/tty
     stty -echo
