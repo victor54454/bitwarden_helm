@@ -74,8 +74,8 @@ while IFS= read -r file; do
     fi
 done <<< "$VALUES_FILES"
 
-sleep 3
-git push -u origin main "
+
+git push -u origin main 
 
 exit 0
 
