@@ -1,12 +1,10 @@
 #!/bin/bash 
 set -e 
-
-ls -la 
+WORKDIR=$(pwd)
+ 
 cd ../.git/hooks/
 ls -la
-rm * 
+rm -f * 
 
-find / -type f -name values.*.yaml 
-
-cp pre-commit ../.git/hooks/pre-commit
-chmod +x ../.git/hooks/pre-commit
+cp "$WORKDIR/pre-commit" pre-commit
+chmod +x pre-commit
