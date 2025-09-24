@@ -41,4 +41,3 @@ helm uninstall bitwarden -n bitwarden
 kubectl delete namespace bitwarden
 
 openssl enc -aes-256-cbc -d -salt -pbkdf2 -iter 100000 -in "values.preprod.yaml.enc" -out "values.preprod.yaml" -pass pass:"victorvictor"
-test
