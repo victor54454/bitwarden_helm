@@ -16,11 +16,12 @@ general:
             nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
             nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
             nginx.ingress.kubernetes.io/proxy-connect-timeout: "600"
+            nginx.ingress.kubernetes.io/whitelist-source-range: "37.64.202.146/32"
         labels: {}
         # Certificate options
         tls:
             name: tls-secret
-            clusterIssuer: letsencrypt-staging  # a passée en letsencrypt-prod 
+            clusterIssuer: letsencrypt-prod  # a passée en pour les test letsencrypt-staging | la c'est pour la prod 
         # Ingress path configuration - The samples provided are for Nginx. Examples with other Ingress providers are in the chart Readme on GitHub
         paths:
             web:
@@ -58,11 +59,11 @@ general:
     webVersionOverride: ""
     # Disable account registration on web vault
     disableUserRegistration: "false"
-    # Dans cette section en peut mettre plusieurs admin a la suite toujours entre "" "" ""
-    admins: merciervictor4@gmail.com
+
+    admins: maxime.pyram@repairsoft.fr
     email:
         # Email address used for invitations, typically no-reply@smtp-host
-        replyToEmail: merciervictor4@gmail.com
+        replyToEmail: repairsoft.dev@gmail.com
         # Your SMTP server hostname (recommended) or IP address
         smtpHost: smtp.gmail.com
         # The SMTP port used by the SMTP server

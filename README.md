@@ -30,7 +30,7 @@ kubectl create namespace ingress-nginx
 ### Déploiement de l'Ingress Controller
 
 ```bash
-kubectl apply -f ~/bitwarden/helm-deployment/bitwarden/ingress_nginx/ingress-nginx.yaml
+kubectl apply -f ~/bitwarden_helm/ingress_nginx/ingress-nginx.yaml
 ```
 
 ### Vérification du démarrage
@@ -128,8 +128,8 @@ Les certificats TLS sont nécessaires pour l'accès HTTPS.
 
 ```bash
 kubectl create secret tls tls-secret \
-  --key tls.key \
-  --cert tls.crt \
+  --key privkey.pem \
+  --cert fullchain.pem \
   -n bitwarden
 ```
 
