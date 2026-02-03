@@ -1,43 +1,58 @@
+# Lancement de l'ingress sur les port 4444 --> https et 8080 --> http 
+
+kubectl create namespace ingress-nginx
+
+kubectl apply -f ~/bitwarden/helm-deployment/bitwarden/ingress_nginx/ingress-nginx.yaml
+
+kubectl wait --namespace ingress-nginx \
+  --for=condition=ready pod \
+  --selector=app.kubernetes.io/component=controller \
+  --timeout=60s
+
+# Lancement de bitwarden 
 helm repo add bitwarden https://charts.bitwarden.com/
 helm repo update
 
 kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.24/deploy/local-path-storage.yaml
+
 # Vérifier que le pod est bien déployé
 kubectl get pods -n local-path-storage
 
 # Vérifier que la StorageClass est créée
 kubectl get storageclass
 
-# Exemples de ce qui sera créé automatiquement :
-- bitwarden-dataprotection
-- bitwarden-licenses  
-- bitwarden-attachments
-- bitwarden-applogs (si logs activés)
-- bitwarden-mssqldata (pour la base de données)
-- bitwarden-mssqllog
-- bitwarden-mssqlbackups
 
 kubectl create namespace bitwarden
 
-kubectl create secret generic custom-secret -n bitwarden \
-  --from-literal=globalSettings__installation__id="ac0f4a39-1b6e-4b2f-80f7-b32f00d2a53e" \
-  --from-literal=globalSettings__installation__key="AsNEcGdR0SRXcGd2Gwyh" \
-  --from-literal=globalSettings__mail__smtp__username="merciervictor4@gmail.com" \
-  --from-literal=globalSettings__mail__smtp__password="kuln exxq dsea yidf" \
-  --from-literal=globalSettings__yubico__clientId="dummy" \
-  --from-literal=globalSettings__yubico__key="dummy" \
-  --from-literal=globalSettings__hibpApiKey="dummy" \
-  --from-literal=SA_PASSWORD="MonSuperMotDePasseSQL2024!"
+#########
+# PERSO #
+################################################################################################
+ kubectl create secret generic custom-secret -n bitwarden \
+   --from-literal=globalSettings__installation__id="eb74819d-9df8-4ec8-9b2f-b3e5008c5ce5" \ 
+   --from-literal=globalSettings__installation__key="w6lMU1mM8qe74jHaUEzr" \
+   --from-literal=globalSettings__mail__smtp__username="merciervictor4@gmail.com" \
+   --from-literal=globalSettings__mail__smtp__password="cvmm eqcg ttzg zosa" \
+   --from-literal=globalSettings__yubico__clientId="dummy" \
+   --from-literal=globalSettings__yubico__key="dummy" \
+   --from-literal=globalSettings__hibpApiKey="dummy" \
+   --from-literal=SA_PASSWORD="MonSuperMotDePasseSQL2024!" \
+   --from-literal=adminSettings__admins="merciervictor4@gmail.com"
+###############################################################################################
+
+
+# Explication des variable mise en secret : 
+# --from-literal=SA_PASSWORD="MonSuperMotDePasseSQL2024!" --> nous permet de nous connecter a la base de donnée. 
+# --from-literal=adminSettings__admins="merciervictor4@gmail.com" \ --> compte admin 
+
 
 kubectl get secret -n bitwarden
 
-#secret tls ssl 
+# secret tls ssl 
 kubectl create secret tls tls-secret --key tls.key --cert tls.crt -n bitwarden
 
-helm upgrade bitwarden bitwarden/self-host --install --namespace bitwarden --values self-host/my-values.yaml --debug --timeout 10m
+helm upgrade bitwarden bitwarden/self-host --install --namespace bitwarden --values self-host/values.preprod.yaml --debug --timeout 10m
 
 helm uninstall bitwarden -n bitwarden
 
 kubectl delete namespace bitwarden
-
-openssl enc -aes-256-cbc -d -salt -pbkdf2 -iter 100000 -in "values.preprod.yaml.enc" -out "values.preprod.yaml" -pass pass:"victorvictor"
+kubectl delete namespace local-path-storage
