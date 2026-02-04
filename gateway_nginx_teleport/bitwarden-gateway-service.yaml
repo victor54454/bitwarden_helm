@@ -1,17 +1,19 @@
 apiVersion: v1
-
 kind: Service
 metadata:
   name: bitwarden-gateway
   namespace: bitwarden
   labels:
     app: bitwarden
-    name: bitwarden
+    name: bitwarden-gateway
+    app.kubernetes.io/name: bitwarden
+    app.kubernetes.io/component: gateway
+    app.kubernetes.io/instance: bitwarden
   annotations:
     # Annotations Teleport pour la découverte automatique
-    teleport.dev/app-name: "bitwarden"
+    teleport.dev/app-name: "bitwarden-gateway"
     teleport.dev/app-uri: "http://bitwarden-gateway.bitwarden.svc.cluster.local:80"
-    teleport.dev/app-labels: "app=bitwarden,name=bitwarden"
+    teleport.dev/app-labels: "app=bitwarden,name=bitwarden-gateway,component=gateway"
 spec:
   type: ClusterIP
   selector:
