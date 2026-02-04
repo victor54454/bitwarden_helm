@@ -1,0 +1,24 @@
+apiVersion: v1
+
+kind: Service
+metadata:
+  name: bitwarden-gateway
+  namespace: bitwarden
+  labels:
+    app: bitwarden
+    name: bitwarden
+  annotations:
+    # Annotations Teleport pour la découverte automatique
+    teleport.dev/app-name: "bitwarden"
+    teleport.dev/app-uri: "http://bitwarden-gateway.bitwarden.svc.cluster.local:80"
+    teleport.dev/app-labels: "app=bitwarden,name=bitwarden"
+spec:
+  type: ClusterIP
+  selector:
+    app: bitwarden
+    component: gateway
+  ports:
+  - name: http
+    port: 80
+    targetPort: 80
+    protocol: TCP

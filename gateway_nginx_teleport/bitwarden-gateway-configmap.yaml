@@ -1,0 +1,118 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bitwarden-gateway-config
+  namespace: bitwarden
+data:
+  nginx.conf: |
+    events {
+        worker_connections 1024;
+    }
+    
+    http {
+        # Configuration globale
+        client_max_body_size 500m;
+        proxy_connect_timeout 600s;
+        proxy_send_timeout 600s;
+        proxy_read_timeout 600s;
+        
+        # Upstream definitions pour chaque service Bitwarden
+        upstream web {
+            server bitwarden-self-host-web.bitwarden.svc.cluster.local:5000;
+        }
+        
+        upstream attachments {
+            server bitwarden-self-host-attachments.bitwarden.svc.cluster.local:5000;
+        }
+        
+        upstream api {
+            server bitwarden-self-host-api.bitwarden.svc.cluster.local:5000;
+        }
+        
+        upstream icons {
+            server bitwarden-self-host-icons.bitwarden.svc.cluster.local:5000;
+        }
+        
+        upstream notifications {
+            server bitwarden-self-host-notifications.bitwarden.svc.cluster.local:5000;
+        }
+        
+        upstream events {
+            server bitwarden-self-host-events.bitwarden.svc.cluster.local:5000;
+        }
+        
+        upstream sso {
+            server bitwarden-self-host-sso.bitwarden.svc.cluster.local:5000;
+        }
+        
+        upstream identity {
+            server bitwarden-self-host-identity.bitwarden.svc.cluster.local:5000;
+        }
+        
+        upstream admin {
+            server bitwarden-self-host-admin.bitwarden.svc.cluster.local:5000;
+        }
+        
+        server {
+            listen 80;
+            server_name _;
+            
+            # Headers communs pour toutes les locations
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header X-Forwarded-Host $host;
+            proxy_set_header X-Forwarded-Port $server_port;
+            
+            # Route /attachments/* -> attachments service
+            location ~ ^/attachments/(.*)$ {
+                proxy_pass http://attachments/$1$is_args$args;
+            }
+            
+            # Route /api/* -> api service
+            location ~ ^/api/(.*)$ {
+                proxy_pass http://api/$1$is_args$args;
+            }
+            
+            # Route /icons/* -> icons service
+            location ~ ^/icons/(.*)$ {
+                proxy_pass http://icons/$1$is_args$args;
+            }
+            
+            # Route /notifications/* -> notifications service (avec support WebSocket)
+            location ~ ^/notifications/(.*)$ {
+                proxy_pass http://notifications/$1$is_args$args;
+                
+                # Support WebSocket pour les notifications en temps réel
+                proxy_http_version 1.1;
+                proxy_set_header Upgrade $http_upgrade;
+                proxy_set_header Connection "upgrade";
+            }
+            
+            # Route /events/* -> events service
+            location ~ ^/events/(.*)$ {
+                proxy_pass http://events/$1$is_args$args;
+            }
+            
+            # Route /sso/* -> sso service
+            location ~ ^/(sso/.*)$ {
+                proxy_pass http://sso/$1$is_args$args;
+            }
+            
+            # Route /identity/* -> identity service
+            location ~ ^/(identity/.*)$ {
+                proxy_pass http://identity/$1$is_args$args;
+            }
+            
+            # Route /admin/* -> admin service
+            location ~ ^/(admin/?.*)$ {
+                proxy_pass http://admin/$1$is_args$args;
+            }
+            
+            # Route par défaut /* -> web service
+            location / {
+                proxy_pass http://web;
+            }
+        }
+    }
