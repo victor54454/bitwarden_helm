@@ -5,7 +5,7 @@
 fullnameOverride: ""
 nameOverride: ""
 general:
-    domain: bitwarden.svc.repairsoft.fr:4444
+    domain: bitwarden.svc.repairsoft.fr
     ingress:
         enabled: true
         className: nginx
