@@ -53,26 +53,21 @@ helm repo update
 
 ---
 
-## 3. Mise en place du stockage persistant
+## 3. Gestion des StorageClass et des volumes gérer par Rancher 
 
-Bitwarden nécessite un stockage persistant pour les données applicatives.
-
-### Déploiement du provisioner local-path
-
+### Création du provisionner pour alimenter les PVCs
 ```bash
 kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.24/deploy/local-path-storage.yaml
 ```
 
-### Vérification des pods
-
-```bash
-kubectl get pods -n local-path-storage
-```
-
 ### Vérification de la StorageClass
-
 ```bash
 kubectl get storageclass
+```
+
+### Pour les supprimer 
+```bash
+kubectl delete storageclass <NAME>
 ```
 
 ---

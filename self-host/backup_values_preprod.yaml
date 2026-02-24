@@ -5,9 +5,9 @@
 fullnameOverride: ""
 nameOverride: ""
 general:
-    domain: 192.168.10.139.nip.io
+    domain: bitwarden.svc.repairsoft.fr
     ingress:
-        enabled: true
+        enabled: false
         className: nginx
         annotations:
             nginx.ingress.kubernetes.io/use-regex: "true"
@@ -16,12 +16,12 @@ general:
             nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
             nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
             nginx.ingress.kubernetes.io/proxy-connect-timeout: "600"
-            #nginx.ingress.kubernetes.io/whitelist-source-range: "37.64.202.146/32"
+            nginx.ingress.kubernetes.io/whitelist-source-range: "37.64.202.146/32"
         labels: {}
         # Certificate options
         tls:
             name: tls-secret
-            clusterIssuer: letsencrypt-staging  # a passée en pour les test letsencrypt-staging | la c'est pour la prod letsencrypt-prod
+            clusterIssuer: letsencrypt-prod  # a passée en pour les test letsencrypt-staging | la c'est pour la prod 
         # Ingress path configuration - The samples provided are for Nginx. Examples with other Ingress providers are in the chart Readme on GitHub
         paths:
             web:
@@ -60,10 +60,10 @@ general:
     # Disable account registration on web vault
     disableUserRegistration: "false"
 
-    admins: vicmercier@outlook.fr,questmk320@tuta.io
+    admins: maxime.pyram@repairsoft.fr
     email:
         # Email address used for invitations, typically no-reply@smtp-host
-        replyToEmail: merciervictor4@gmail.com
+        replyToEmail: repairsoft.dev@gmail.com
         # Your SMTP server hostname (recommended) or IP address
         smtpHost: smtp.gmail.com
         # The SMTP port used by the SMTP server
@@ -94,7 +94,7 @@ general:
     cloudRegion: US
 # Specify the name of the shared storage class
 # This storage class requires ReadWriteMany.  You will need to provide your own storage class.  Storage classes with automatic volume previsioners are recommended.
-sharedStorageClassName: local-path-retain
+sharedStorageClassName: local-path
 # Secrets are required.  Review the chart README on GitHub for details on creating these secrets
 secrets:
     secretName: custom-secret
@@ -495,12 +495,15 @@ database:
 # You can specify raw Kubernetes manifests that will be applied before or after the base Helm install.
 # Please see the chart README in GitHub for more information and examples.
 rawManifests:
-    preInstall:
-      - apiVersion: storage.k8s.io/v1
-        kind: StorageClass
-        metadata:
-          name: local-path-retain
-        provisioner: rancher.io/local-path
-        reclaimPolicy: Retain
-        volumeBindingMode: WaitForFirstConsumer
+    preInstall: []
+    # E.g. add a custom certificate to your bitwarden installation.
+    # - apiVersion: v1
+    #   kind: ConfigMap
+    #   metadata:
+    #     name: cacert
+    #   data:
+    #     rootca.crt: |
+    #       -----BEGIN CERTIFICATE-----
+    #       xxxx
+    #       -----END CERTIFICATE-----
     postInstall: []
