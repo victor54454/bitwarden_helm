@@ -65,11 +65,20 @@ kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisione
 kubectl get storageclass
 ```
 
+### Supprimer le StorageClass en mode delete 
+```bash
+kubectl delete storageclass local-path
+```
+
 ### Pour les supprimer 
 ```bash
 kubectl delete storageclass <NAME>
 ```
 
+### Pour voir tout les PVCs
+```bash 
+kubectl get pvc -n bitwarden
+```
 ---
 
 ## 4. Création du namespace Bitwarden
