@@ -125,7 +125,13 @@ kubectl get secret -n bitwarden
 ## 6. Création du secret TLS
 
 Les certificats TLS sont nécessaires pour l'accès HTTPS.
-
+```bash 
+openssl req -x509 -nodes -days 365 -newkey ec \
+  -pkeyopt ec_paramgen_curve:P-256 \
+  -keyout privkey.pem \
+  -out fullchain.pem \
+  -subj "/CN=192.168.10.139.nip.io"
+```
 ```bash
 kubectl create secret tls tls-secret \
   --key privkey.pem \
