@@ -148,11 +148,9 @@ kubectl create secret tls tls-secret \
 ## 7. Déploiement de Bitwarden avec Helm
 
 ```bash
-helm upgrade bitwarden bitwarden/self-host \
-  --install \
+helm install bitwarden ./bitwarden_helm/self-host \
   --namespace bitwarden \
-  --values self-host/values.preprod.yaml \
-  --debug \
+  --values bitwarden_helm/self-host/values.preprod.yaml \
   --timeout 10m
 ```
 
