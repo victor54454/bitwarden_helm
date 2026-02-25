@@ -16,32 +16,43 @@ RETENTION_DAYS=7
 # 1. Récupérer le mot de passe SA depuis le secret
 SA_PASSWORD=$(kubectl get secret custom-secret -n ${NAMESPACE} -o jsonpath='{.data.SA_PASSWORD}' | base64 -d)
 
-echo "=== [1/5] Backup MSSQL ==="
+echo "=== [1/6] Backup MSSQL ==="
 kubectl exec ${MSSQL_POD} -n ${NAMESPACE} -- /opt/mssql-tools/bin/sqlcmd \
   -S localhost -U sa -P "${SA_PASSWORD}" \
   -Q "BACKUP DATABASE [vault] TO DISK = N'/var/opt/mssql/backups/${BACKUP_FILE}' WITH FORMAT, NAME = 'vault-full-backup'"
 
-echo "=== [2/5] Copie depuis le pod ==="
+echo "=== [2/6] Copie depuis le pod ==="
 kubectl cp ${NAMESPACE}/${MSSQL_POD}:/var/opt/mssql/backups/${BACKUP_FILE} /tmp/${BACKUP_FILE}
 
-echo "=== [3/5] Chiffrement GPG ==="
-gpg --encrypt --recipient "${GPG_RECIPIENT}" --trust-model always -o /tmp/${BACKUP_FILE}.gpg /tmp/${BACKUP_FILE}
-rm -f /tmp/${BACKUP_FILE}
-echo "Fichier chiffré: ${BACKUP_FILE}.gpg"
+echo "=== [3/6] Backup des clés Data Protection ==="
+API_POD=$(kubectl get pod -n ${NAMESPACE} -l app=bitwarden-self-host-api -o jsonpath='{.items[0].metadata.name}')
+rm -rf /tmp/dataprotection-keys
+kubectl cp ${NAMESPACE}/${API_POD}:/etc/bitwarden/core/aspnet-dataprotection /tmp/dataprotection-keys
+tar czf /tmp/dataprotection-keys_${TIMESTAMP}.tar.gz -C /tmp dataprotection-keys
+rm -rf /tmp/dataprotection-keys
+echo "Clés Data Protection sauvegardées"
 
-echo "=== [4/5] Envoi vers NFS ==="
+echo "=== [4/6] Chiffrement GPG ==="
+gpg --encrypt --recipient "${GPG_RECIPIENT}" --trust-model always -o /tmp/${BACKUP_FILE}.gpg /tmp/${BACKUP_FILE}
+gpg --encrypt --recipient "${GPG_RECIPIENT}" --trust-model always -o /tmp/dataprotection-keys_${TIMESTAMP}.tar.gz.gpg /tmp/dataprotection-keys_${TIMESTAMP}.tar.gz
+rm -f /tmp/${BACKUP_FILE} /tmp/dataprotection-keys_${TIMESTAMP}.tar.gz
+echo "Fichiers chiffrés"
+
+echo "=== [5/6] Envoi vers NFS ==="
 sudo mkdir -p ${NFS_MOUNT}
 sudo mount -t nfs ${NFS_SERVER}:${NFS_PATH} ${NFS_MOUNT} 2>/dev/null || true
 sudo cp /tmp/${BACKUP_FILE}.gpg ${NFS_MOUNT}/${BACKUP_FILE}.gpg
+sudo cp /tmp/dataprotection-keys_${TIMESTAMP}.tar.gz.gpg ${NFS_MOUNT}/dataprotection-keys_${TIMESTAMP}.tar.gz.gpg
 echo "Backup copié: ${NFS_MOUNT}/${BACKUP_FILE}.gpg ($(du -h ${NFS_MOUNT}/${BACKUP_FILE}.gpg | cut -f1))"
 
-echo "=== [5/5] Nettoyage (>${RETENTION_DAYS} jours) ==="
+echo "=== [6/6] Nettoyage (>${RETENTION_DAYS} jours) ==="
 sudo find ${NFS_MOUNT} -name "vault_*.bak.gpg" -mtime +${RETENTION_DAYS} -delete -print
+sudo find ${NFS_MOUNT} -name "dataprotection-keys_*.tar.gz.gpg" -mtime +${RETENTION_DAYS} -delete -print
 echo "Backups restants:"
 ls -lh ${NFS_MOUNT}/vault_*.bak.gpg 2>/dev/null || echo "Aucun"
 
 # Nettoyage local
-rm -f /tmp/${BACKUP_FILE}.gpg
+rm -f /tmp/${BACKUP_FILE}.gpg /tmp/dataprotection-keys_${TIMESTAMP}.tar.gz.gpg
 sudo umount ${NFS_MOUNT} 2>/dev/null || true
 
 echo "=== Backup terminé avec succès ==="
