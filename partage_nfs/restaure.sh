@@ -1,41 +1,45 @@
 #!/bin/bash
-# restore-bitwarden.sh - Restaure un backup MSSQL chiffré depuis NFS
+# restore-bitwarden.sh - Restaure un backup MSSQL chiffré depuis MinIO S3
 
 set -e
+export PATH=$PATH:/usr/local/bin
+
+# Installer mc si absent
+if ! command -v mc &> /dev/null; then
+    echo "=== Installation de mc (MinIO Client) ==="
+    curl -sO https://dl.min.io/client/mc/release/linux-amd64/archive/mc.RELEASE.2025-01-17T23-25-50Z
+    chmod +x mc.RELEASE.2025-01-17T23-25-50Z
+    sudo mv mc.RELEASE.2025-01-17T23-25-50Z /usr/local/bin/mc
+    mc alias set minio http://192.168.10.99:9000 minioadmin minioadmin
+fi
 
 NAMESPACE="bitwarden"
 MSSQL_POD="bitwarden-self-host-mssql-0"
-NFS_SERVER="192.168.10.51"
-NFS_PATH="/var/nfs/bitwarden"
-NFS_MOUNT="/mnt/nfs-bitwarden"
+MINIO_ALIAS="minio"
+MINIO_BUCKET="bitwarden-backups"
 
-# 1. Monter le NFS et lister les backups disponibles
-sudo mkdir -p ${NFS_MOUNT}
-sudo mount -t nfs ${NFS_SERVER}:${NFS_PATH} ${NFS_MOUNT} 2>/dev/null || true
-
+# 1. Lister les backups disponibles
 echo "=== Backups disponibles ==="
-ls -lh ${NFS_MOUNT}/vault_*.bak.gpg 2>/dev/null || { echo "Aucun backup trouvé!"; exit 1; }
+mc ls ${MINIO_ALIAS}/${MINIO_BUCKET}/ | grep "vault_.*\.bak\.gpg"
 
 # 2. Demander quel backup restaurer
 echo ""
 read -p "Nom du fichier à restaurer (ex: vault_20260225_130835.bak.gpg): " BACKUP_FILE
 
-if [ ! -f "${NFS_MOUNT}/${BACKUP_FILE}" ]; then
-    echo "Erreur: ${BACKUP_FILE} introuvable!"
-    exit 1
-fi
+# Vérifier que le fichier existe
+mc stat ${MINIO_ALIAS}/${MINIO_BUCKET}/${BACKUP_FILE} > /dev/null 2>&1 || { echo "Erreur: ${BACKUP_FILE} introuvable!"; exit 1; }
 
 # Déduire le nom du fichier Data Protection correspondant
 DP_TIMESTAMP=$(echo ${BACKUP_FILE} | sed 's/vault_\(.*\)\.bak\.gpg/\1/')
 DP_FILE="dataprotection-keys_${DP_TIMESTAMP}.tar.gz.gpg"
 
-if [ ! -f "${NFS_MOUNT}/${DP_FILE}" ]; then
+if mc stat ${MINIO_ALIAS}/${MINIO_BUCKET}/${DP_FILE} > /dev/null 2>&1; then
+    RESTORE_DP=true
+else
     echo "⚠️  Clés Data Protection non trouvées: ${DP_FILE}"
     read -p "Continuer sans les clés ? (oui/non): " SKIP_DP
     if [ "${SKIP_DP}" != "oui" ]; then exit 1; fi
     RESTORE_DP=false
-else
-    RESTORE_DP=true
 fi
 
 echo ""
@@ -45,9 +49,11 @@ if [ "${CONFIRM}" != "oui" ]; then
     exit 0
 fi
 
-# 3. Déchiffrer le backup
-echo "=== [1/5] Déchiffrement GPG ==="
-gpg --decrypt ${NFS_MOUNT}/${BACKUP_FILE} > /tmp/vault_restored.bak
+# 3. Télécharger et déchiffrer le backup
+echo "=== [1/5] Téléchargement et déchiffrement ==="
+mc cp ${MINIO_ALIAS}/${MINIO_BUCKET}/${BACKUP_FILE} /tmp/${BACKUP_FILE}
+gpg --decrypt /tmp/${BACKUP_FILE} > /tmp/vault_restored.bak
+rm -f /tmp/${BACKUP_FILE}
 echo "Déchiffré: /tmp/vault_restored.bak ($(du -h /tmp/vault_restored.bak | cut -f1))"
 
 # 4. Copier dans le pod MSSQL
@@ -65,11 +71,12 @@ kubectl exec ${MSSQL_POD} -n ${NAMESPACE} -- /opt/mssql-tools/bin/sqlcmd \
 # 6. Restaurer les clés Data Protection
 echo "=== [4/5] Restauration des clés Data Protection ==="
 if [ "${RESTORE_DP}" = true ]; then
-    gpg --decrypt ${NFS_MOUNT}/${DP_FILE} > /tmp/dataprotection-keys.tar.gz
+    mc cp ${MINIO_ALIAS}/${MINIO_BUCKET}/${DP_FILE} /tmp/${DP_FILE}
+    gpg --decrypt /tmp/${DP_FILE} > /tmp/dataprotection-keys.tar.gz
     tar xzf /tmp/dataprotection-keys.tar.gz -C /tmp
     API_POD=$(kubectl get pod -n ${NAMESPACE} -l app=bitwarden-self-host-api -o jsonpath='{.items[0].metadata.name}')
     kubectl cp /tmp/dataprotection-keys/ ${NAMESPACE}/${API_POD}:/etc/bitwarden/core/aspnet-dataprotection
-    rm -rf /tmp/dataprotection-keys /tmp/dataprotection-keys.tar.gz
+    rm -rf /tmp/dataprotection-keys /tmp/dataprotection-keys.tar.gz /tmp/${DP_FILE}
     echo "Clés Data Protection restaurées"
 else
     echo "Skipped (clés non disponibles)"
@@ -82,6 +89,5 @@ kubectl rollout restart deployment -n ${NAMESPACE}
 # Nettoyage
 rm -f /tmp/vault_restored.bak
 kubectl exec ${MSSQL_POD} -n ${NAMESPACE} -- rm -f /var/opt/mssql/backups/vault_restored.bak
-sudo umount ${NFS_MOUNT} 2>/dev/null || true
 
 echo "=== Restauration terminée avec succès ==="
