@@ -79,6 +79,41 @@ kubectl delete storageclass <NAME>
 ```bash 
 kubectl get pvc -n bitwarden
 ```
+
+### Si on utilise minio pour le stockage S3 des backups : 
+```yaml
+services:
+  minio:
+    image: minio/minio:RELEASE.2025-01-20T14-49-07Z
+    container_name: minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"   # API S3
+      - "127.0.0.1:9001:9001"   # Console web
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio-data:/data
+    restart: unless-stopped
+
+volumes:
+  minio-data:
+```
+Voici un exemple de docker compose que l'on peut utilise pour minio. 
+Mais en plus de cela il nous faut récupérer notre acces key et secret key de minio donc une fois que nous avons lancer minio il suffit de aller dans le menu a gauche dans Acces Keys et en crée une nouvelles.
+Comme on peut le voir les fichiers dans backup_bitwarden ce sont eux qui vont nous aider a faire les backups de bitwarden et c'est restore. 
+Donc on vas légérement modifier les fichier .sh pour intégré le faites qu'il faut aller sauvegarder les backups sur Minio et aller les chercher sur minio. 
+
+Ou allons-nous stockée donc c'est deux clef acces key et secret key. 
+Dans un secret Kubernetes : 
+```bash 
+kubectl create secret generic bitwarden-minio-credentials \
+  --namespace bitwarden \
+  --from-literal=accessKey=TON_ACCESS_KEY \
+  --from-literal=secretKey=TON_SECRET_KEY
+```
+
 ---
 
 ## 4. Création du namespace Bitwarden
@@ -174,11 +209,17 @@ kubectl delete namespace ingress-nginx
 
 ## 9. Déchiffrement des backups : 
 ### Clef GPG : 
-Il faut donc vérifer que vous avez la bonne clef de déchiffrement : 
+Clef public = chiffrement 
+Clef priver = déchiffrement
+Il faut donc vérifier que vous avez la bonne clef de chiffrement sur le nodes qui a bitwarden: 
 ```bash
-gpg --list-key 
+gpg --list-keys 
 ```
-#### Exemple de sortie : 
+Il faut aussi vérifier que nous avons la bonne clef de déchiffrement sur nodes qui a bitwarden :
+```bash
+gpg --list-secret-keys
+``` 
+#### Exemple de sortie pour clef public : 
 ```bash 
 victor@kube:~/bitwarden_helm/partage_nfs$ gpg --list-key
 /home/victor/.gnupg/pubring.kbx
@@ -188,11 +229,22 @@ pub   ed25519 2026-02-25 [SC]
 uid           [ultimate] Bitwarden Backup <questmk320@tuta.io>
 sub   cv25519 2026-02-25 [E]
 ```
----
+#### Exemple de sortie pour clef priver: 
+```bash 
+orktk@centaurus:~/victor/minio$ gpg --list-secret-keys
+/home/orktk/.gnupg/pubring.kbx
+------------------------------
+sec   rsa4096 2025-10-01 [SC]
+      FE9E26892B7CCA1A58E934871DC9CFA13D696195
+uid          [  ultime ] HelmDeployment
+ssb   rsa4096 2025-10-01 [E]
 
-Le script dans ```bitwarden_helm/partage_nf/backup.sh``` nous permet de faire 
-des backup et de la partager dans un dossier nfs partagé sur un autre serveur. On peut bien sûr changer le script pour faire le partage avec du S3.
-Donc, si vous avez la clef privée sur vous, vous pourrez déchiffrer le backup et avec la clef publique le chiffrer. C'est pour cela que la clé publique doit être sur le serveur pour qu'ils puissent crypter le backup. La clef privée doit être gardée dans un lieu sûr qui ne risque pas d'être compromis. 
+sec   ed25519 2026-02-26 [SC]
+      CFB496BA6800650BE44D53FE6D5A26A37A68EA1B
+uid          [  ultime ] Bitwarden Backup
+ssb   cv25519 2026-02-26 [E]
+```
+---
 
 ```bash
  gpg --decrypt vault_XXXXXXXX.bak.gpg > vault_restored.bak
