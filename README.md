@@ -274,6 +274,7 @@ ssb   cv25519 2026-02-26 [E]
 
 
 ## 10. Les backups et comment en faire et comment les réinjecter : 
+
 ### Faire une backup : 
 Donc rien de plus simple il faut aller exécuter ce fichier .sh ```bash bitwarden_helm/backup_bitwarden/database-backup/db-backup.sh```. 
 
