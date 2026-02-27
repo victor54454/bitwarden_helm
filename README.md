@@ -114,6 +114,27 @@ kubectl create secret generic bitwarden-minio-credentials \
   --from-literal=secretKey=TON_SECRET_KEY
 ```
 
+Le volumes dans le qu'elle sera stocké les backups : 
+```bash
+victor@kube:~/bitwarden_helm$ kgpvc bitwarden 
+NAME                                 STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS        VOLUMEATTRIBUTESCLASS   AGE
+bitwarden-self-host-applogs          Bound    pvc-e0941f0c-b664-4216-b9ce-d995c1d64b89   2Gi        RWO            local-path-retain   <unset>                 85m
+bitwarden-self-host-attachments      Bound    pvc-f26e8930-3ea3-409c-8c31-d44800a16d75   5Gi        RWO            local-path-retain   <unset>                 85m
+bitwarden-self-host-dataprotection   Bound    pvc-97624b3a-1f26-440f-8734-176d09086b72   1Gi        RWO            local-path-retain   <unset>                 85m
+bitwarden-self-host-licenses         Bound    pvc-c02f1a04-3c30-47e6-a9cd-987680e804c7   1Gi        RWO            local-path-retain   <unset>                 85m
+bitwarden-self-host-mssqlbackups     Bound    pvc-0e7ae396-b4fb-4442-bcfb-c1c2e8018f0a   10Gi       RWO            local-path-retain   <unset>                 85m
+bitwarden-self-host-mssqldata        Bound    pvc-6faee74f-e8e6-4004-9c1a-6e81aa1e4101   20Gi       RWO            local-path-retain   <unset>                 85m
+bitwarden-self-host-mssqllog         Bound    pvc-9e41ca37-2346-405a-a0d9-87392e5777f5   5Gi        RWO            local-path-retain   <unset>                 85m 
+```
+Le volumes qui gère tout ça est le ```bitwarden-self-host-mssqlbackups``` il a une place de 10 giga maxi donc il faut faire attention a ne pas le surcharger. C'est pour cela que dans le fichier backup-job.yaml j'ai ajouter la commande ```rm -f /backups/vault.bak.*``` supprime uniquement les fichiers qui ont un suffixe après vault.bak. C'est-à-dire les anciens backups renommés avec un timestamp. 
+```bash
+/backups/vault.bak                        ← GARDÉ (le nouveau backup frais)
+/backups/vault.bak.2026-02-27T08:51:48Z  ← SUPPRIMÉ (l'ancien renommé)
+/backups/vault.bak.2026-02-27T08:52:38Z  ← SUPPRIMÉ (encore plus vieux)
+```
+Donc pour faire une backup il faut lancer le fichier : ```db-backup.sh```
+Pour faire une restore de la base de donnée il faut faire un ```db-restore.sh``` il ira ce connecter au minio et prendra la backup la plus recénte puis la re injectera dans notre bitwarden. Bien sur il faut démarer Bitwarden avant de faire le restore. 
+
 ---
 
 ## 4. Création du namespace Bitwarden

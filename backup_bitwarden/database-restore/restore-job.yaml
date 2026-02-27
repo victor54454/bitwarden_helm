@@ -16,15 +16,44 @@ spec:
         app.kubernetes.io/component: bitwarden-restore
         app: bitwarden-restore
     spec:
+      initContainers:
+      - name: download-minio
+        image: "minio/mc"
+        env:
+        - name: MINIO_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: bitwarden-minio-credentials
+              key: accessKey
+        - name: MINIO_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: bitwarden-minio-credentials
+              key: secretKey
+        volumeMounts:
+          - name: mssql-backups
+            mountPath: /backups
+        command:
+          - "/bin/sh"
+          - "-c"
+        args: [
+            "
+            mc alias set myminio http://192.168.10.99:9000 $MINIO_ACCESS_KEY $MINIO_SECRET_KEY --insecure;
+            LINE=$(mc ls myminio/backup-bitwarden --insecure | sort | tail -1); LATEST=${LINE##* };
+            echo \"Téléchargement de $LATEST depuis MinIO...\";
+            mc cp myminio/backup-bitwarden/$LATEST /backups/vault.bak --insecure;
+            echo 'Téléchargement terminé.'
+            "
+        ]
       containers:
       - name: restore-db
+        image: "mcr.microsoft.com/mssql-tools"
         env:
         - name: MSSQL_CONN_STRING
           valueFrom:
             secretKeyRef:
               name: bitwarden-sql-connection-string
               key: globalSettings__sqlServer__connectionString
-        image: "mcr.microsoft.com/mssql-tools"
         volumeMounts:
           - name: mssql-backups
             mountPath: /backups
