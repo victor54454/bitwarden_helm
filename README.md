@@ -273,10 +273,13 @@ ssb   cv25519 2026-02-26 [E]
 ```
 
 
-## 10. Les backups et comment en faire et comment les réinjecter : 
+## 10. Les backups et comment en faire et comment les réinjecter :
 
-### Faire une backup : 
-Donc rien de plus simple il faut aller exécuter ce fichier .sh ```bash bitwarden_helm/backup_bitwarden/database-backup/db-backup.sh```. 
+### Faire une backup : 
+
+Donc rien de plus simple il faut aller exécuter ce fichier .sh 
+
+```bash bitwarden_helm/backup_bitwarden/database-backup/db-backup.sh```. 
 
 ### Faire une restoration de la backup dans un nouveauc bitwarden : 
 Pour faire une restoration de la backup nous allons re mettre en place le ingress comme ce qui est montrais plus haut dans le readme. 
