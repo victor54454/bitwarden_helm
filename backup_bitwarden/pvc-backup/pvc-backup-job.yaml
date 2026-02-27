@@ -1,0 +1,68 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: "bitwarden-pvc-backup"
+  labels:
+    app.kubernetes.io/component: bitwarden-pvc-backup
+    app: bitwarden-pvc-backup
+spec:
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: bitwarden-pvc-backup
+        app: bitwarden-pvc-backup
+    spec:
+      containers:
+      - name: backup-pvcs
+        image: "minio/mc"
+        env:
+        - name: MINIO_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: bitwarden-minio-credentials
+              key: accessKey
+        - name: MINIO_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: bitwarden-minio-credentials
+              key: secretKey
+        volumeMounts:
+          - name: dataprotection
+            mountPath: /pvcs/dataprotection
+          - name: attachments
+            mountPath: /pvcs/attachments
+          - name: licenses
+            mountPath: /pvcs/licenses
+        command:
+          - "/bin/sh"
+          - "-c"
+        args:
+          - |
+            mc alias set myminio http://192.168.10.99:9000 $MINIO_ACCESS_KEY $MINIO_SECRET_KEY --insecure
+            mc mb --ignore-existing myminio/backup-bitwarden --insecure
+            TIMESTAMP=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+
+            echo 'Backup dataprotection...'
+            test -n "$(ls -A /pvcs/dataprotection/)" && mc cp --recursive /pvcs/dataprotection/ myminio/backup-bitwarden/pvcs/dataprotection_${TIMESTAMP}/ --insecure || echo 'dataprotection vide, skip.'
+
+            echo 'Backup attachments...'
+            test -n "$(ls -A /pvcs/attachments/)" && mc cp --recursive /pvcs/attachments/ myminio/backup-bitwarden/pvcs/attachments_${TIMESTAMP}/ --insecure || echo 'attachments vide, skip.'
+
+            echo 'Backup licenses...'
+            test -n "$(ls -A /pvcs/licenses/)" && mc cp --recursive /pvcs/licenses/ myminio/backup-bitwarden/pvcs/licenses_${TIMESTAMP}/ --insecure || echo 'licenses vide, skip.'
+
+            echo 'Backup PVCs termine.'
+      restartPolicy: Never
+      volumes:
+        - name: dataprotection
+          persistentVolumeClaim:
+            claimName: bitwarden-self-host-dataprotection
+        - name: attachments
+          persistentVolumeClaim:
+            claimName: bitwarden-self-host-attachments
+        - name: licenses
+          persistentVolumeClaim:
+            claimName: bitwarden-self-host-licenses

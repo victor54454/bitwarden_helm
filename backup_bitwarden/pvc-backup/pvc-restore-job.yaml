@@ -1,0 +1,76 @@
+---
+# IMPORTANT : lancer ce job APRES "helm install" mais AVANT de demarrer les pods Bitwarden
+# Ordre de restore complet :
+#   1. kubectl apply -f custom-secret_TIMESTAMP.yaml
+#   2. helm install bitwarden ./self-host -f values.yaml -n bitwarden
+#   3. kubectl apply -f pvc-restore-job.yaml  (ce fichier)
+#   4. bash db-restore.sh
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: "bitwarden-pvc-restore"
+  namespace: bitwarden
+  labels:
+    app.kubernetes.io/component: bitwarden-pvc-restore
+    app: bitwarden-pvc-restore
+spec:
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: bitwarden-pvc-restore
+        app: bitwarden-pvc-restore
+    spec:
+      containers:
+      - name: restore-pvcs
+        image: "minio/mc"
+        env:
+        - name: MINIO_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: bitwarden-minio-credentials
+              key: accessKey
+        - name: MINIO_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: bitwarden-minio-credentials
+              key: secretKey
+        volumeMounts:
+          - name: dataprotection
+            mountPath: /pvcs/dataprotection
+          - name: attachments
+            mountPath: /pvcs/attachments
+          - name: licenses
+            mountPath: /pvcs/licenses
+        command:
+          - "/bin/sh"
+          - "-c"
+        args:
+          - |
+            mc alias set myminio http://192.168.10.99:9000 $MINIO_ACCESS_KEY $MINIO_SECRET_KEY --insecure
+
+            echo 'Restore dataprotection...'
+            LINE=$(mc ls myminio/backup-bitwarden/pvcs/dataprotection_ --insecure 2>/dev/null | sort | tail -1); LATEST=${LINE##* }
+            test -n "$LATEST" && rm -rf /pvcs/dataprotection/* && mc cp --recursive myminio/backup-bitwarden/pvcs/$LATEST /pvcs/dataprotection/ --insecure || echo 'dataprotection: aucun backup trouve, skip.'
+
+            echo 'Restore attachments...'
+            LINE=$(mc ls myminio/backup-bitwarden/pvcs/attachments_ --insecure 2>/dev/null | sort | tail -1); LATEST=${LINE##* }
+            test -n "$LATEST" && rm -rf /pvcs/attachments/* && mc cp --recursive myminio/backup-bitwarden/pvcs/$LATEST /pvcs/attachments/ --insecure || echo 'attachments: aucun backup trouve, skip.'
+
+            echo 'Restore licenses...'
+            LINE=$(mc ls myminio/backup-bitwarden/pvcs/licenses_ --insecure 2>/dev/null | sort | tail -1); LATEST=${LINE##* }
+            test -n "$LATEST" && rm -rf /pvcs/licenses/* && mc cp --recursive myminio/backup-bitwarden/pvcs/$LATEST /pvcs/licenses/ --insecure || echo 'licenses: aucun backup trouve, skip.'
+
+            echo 'Restore PVCs termine.'
+      restartPolicy: Never
+      volumes:
+        - name: dataprotection
+          persistentVolumeClaim:
+            claimName: bitwarden-self-host-dataprotection
+        - name: attachments
+          persistentVolumeClaim:
+            claimName: bitwarden-self-host-attachments
+        - name: licenses
+          persistentVolumeClaim:
+            claimName: bitwarden-self-host-licenses

@@ -39,9 +39,9 @@ spec:
         args: [
             "
             mc alias set myminio http://192.168.10.99:9000 $MINIO_ACCESS_KEY $MINIO_SECRET_KEY --insecure;
-            LINE=$(mc ls myminio/backup-bitwarden --insecure | sort | tail -1); LATEST=${LINE##* };
+            LATEST=$(mc find myminio/backup-bitwarden --name \"*.bak\" --insecure | sort | tail -1);
             echo \"Téléchargement de $LATEST depuis MinIO...\";
-            mc cp myminio/backup-bitwarden/$LATEST /backups/vault.bak --insecure;
+            mc cp \"$LATEST\" /backups/vault.bak --insecure;
             echo 'Téléchargement terminé.'
             "
         ]
