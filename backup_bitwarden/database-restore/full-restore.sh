@@ -81,9 +81,11 @@ echo "=========================================="
 echo " 2/4 - Helm install"
 echo "=========================================="
 echo ""
-echo "Lancez maintenant la commande suivante dans un autre terminal :"
+echo "Lancez maintenant la commande en dehors du dossier bitwarden_helm dans un autre terminal :"
 echo ""
-echo "  helm install bitwarden ./self-host -f values.preprod.yaml -n bitwarden"
+echo "  helm install bitwarden ./bitwarden_helm/self-host \
+        --namespace bitwarden \
+        --values bitwarden_helm/self-host/values.preprod.yaml"
 echo ""
 read -p "Appuyez sur Entree une fois que helm install est termine..."
 

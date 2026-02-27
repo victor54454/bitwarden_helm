@@ -113,6 +113,7 @@ kubectl create secret generic bitwarden-minio-credentials \
   --from-literal=accessKey=TON_ACCESS_KEY \
   --from-literal=secretKey=TON_SECRET_KEY
 ```
+A garder c'est très important les clef de minio.
 
 Le volumes dans le qu'elle sera stocké les backups : 
 ```bash
@@ -270,3 +271,27 @@ ssb   cv25519 2026-02-26 [E]
 ```bash
  gpg --decrypt vault_XXXXXXXX.bak.gpg > vault_restored.bak
 ```
+
+
+## 10. Les backups et comment en faire et comment les réinjecter : 
+### Faire une backup : 
+Donc rien de plus simple il faut aller exécuter ce fichier .sh ```bash bitwarden_helm/backup_bitwarden/database-backup/db-backup.sh```. 
+
+### Faire une restoration de la backup dans un nouveauc bitwarden : 
+Pour faire une restoration de la backup nous allons re mettre en place le ingress comme ce qui est montrais plus haut dans le readme. 
+On fait pareille pour la partie local-path. 
+Il faut que l'on re crée le secret :
+```bash 
+kubectl create secret tls tls-secret \
+  --key privkey.pem \
+  --cert fullchain.pem \
+  -n bitwarden
+```
+Bien sûr comme dit plus haut il faut avoir bien sauvegarder les clef de Minio. 
+
+La maintenant  nous pouvons lancer le script de full-restore.sh : 
+```bash 
+bash bitwarden_helm/backup_bitwarden/database-restore/full-restore.sh
+```
+![alt text](photo/image.png)
+Comme on peut le voir sur la photo on peut comprendre ce qui est gérer par nous ou par le script. 
