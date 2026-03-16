@@ -281,7 +281,7 @@ Donc rien de plus simple il faut aller exécuter ce fichier .sh
 
 ```bash bitwarden_helm/backup_bitwarden/database-backup/db-backup.sh```. 
 
-### Faire une restoration de la backup dans un nouveauc bitwarden : 
+### Faire une restoration de la backup dans un nouveau bitwarden : 
 ![alt text](photo/image.png)
 
 Comme on peut le voir sur la photo on peut comprendre ce qui est gérer par nous ou par le script.
