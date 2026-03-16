@@ -41,7 +41,7 @@ spec:
           - "-c"
         args:
           - |
-            mc alias set myminio http://192.168.10.99:9000 $MINIO_ACCESS_KEY $MINIO_SECRET_KEY --insecure
+            mc alias set myminio http://192.168.10.121:9000 $MINIO_ACCESS_KEY $MINIO_SECRET_KEY --insecure
             mc mb --ignore-existing myminio/backup-bitwarden --insecure
             TIMESTAMP=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
 

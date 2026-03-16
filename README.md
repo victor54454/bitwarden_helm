@@ -282,20 +282,37 @@ Donc rien de plus simple il faut aller exécuter ce fichier .sh
 ```bash bitwarden_helm/backup_bitwarden/database-backup/db-backup.sh```. 
 
 ### Faire une restoration de la backup dans un nouveauc bitwarden : 
-Pour faire une restoration de la backup nous allons re mettre en place le ingress comme ce qui est montrais plus haut dans le readme. 
-On fait pareille pour la partie local-path. 
-Il faut que l'on re crée le secret :
-```bash 
-kubectl create secret tls tls-secret \
-  --key privkey.pem \
-  --cert fullchain.pem \
-  -n bitwarden
-```
-Bien sûr comme dit plus haut il faut avoir bien sauvegarder les clef de Minio. 
-
-La maintenant  nous pouvons lancer le script de full-restore.sh : 
-```bash 
-bash bitwarden_helm/backup_bitwarden/database-restore/full-restore.sh
-```
 ![alt text](photo/image.png)
-Comme on peut le voir sur la photo on peut comprendre ce qui est gérer par nous ou par le script. 
+
+Comme on peut le voir sur la photo on peut comprendre ce qui est gérer par nous ou par le script.
+
+#### Etape 1 — Lancer le backup (état actuel avec ton compte)
+
+```bash 
+cd /home/orktk/bitwarden_helm
+```
+```bash 
+bash backup_bitwarden/database-backup/db-backup.sh
+```
+
+Attend que les 3 étapes (BDD + Secret + PVCs) se terminent avec succès.
+
+#### Etape 2 — Simuler le sinistre (désinstaller Bitwarden)
+
+```bash 
+helm uninstall bitwarden -n bitwarden
+```
+Puis vérifie que tout est bien parti :
+
+```bash 
+kubectl get pods -n bitwarden
+```
+
+#### Etape 3 — Lancer le full-restore
+```bash 
+bash backup_bitwarden/database-restore/full-restore.sh
+```
+Il va te demander les credentials MinIO, puis faire une pause pour que tu relances helm install manuellement sur un autre terminal. Une fois helm install terminer la il faudra revenir sur l'ancien terminal pour appuyer sur entrée. 
+
+#### Etape 4 — Vérifier
+Une fois tout terminé, connecte-toi sur l'interface Bitwarden et vérifie que ton compte est bien là.

@@ -48,7 +48,7 @@ spec:
           - "-c"
         args:
           - |
-            mc alias set myminio http://192.168.10.99:9000 $MINIO_ACCESS_KEY $MINIO_SECRET_KEY --insecure
+            mc alias set myminio http://192.168.10.121:9000 $MINIO_ACCESS_KEY $MINIO_SECRET_KEY --insecure
 
             echo 'Restore dataprotection...'
             LINE=$(mc ls myminio/backup-bitwarden/pvcs/dataprotection_ --insecure 2>/dev/null | sort | tail -1); LATEST=${LINE##* }

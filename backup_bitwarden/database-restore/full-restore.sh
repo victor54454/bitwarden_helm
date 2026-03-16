@@ -50,7 +50,7 @@ kubectl run mc-secret-restore \
     --env="AK=${ACCESS_KEY}" \
     --env="SK=${SECRET_KEY}" \
     --command -- sh -c \
-    'mc alias set m http://192.168.10.99:9000 "$AK" "$SK" --insecure >/dev/null 2>&1; LINE=$(mc ls m/backup-bitwarden/secrets/ --insecure 2>/dev/null | sort | tail -1); LATEST=${LINE##* }; echo "Telechargement de $LATEST..." >&2; mc cat m/backup-bitwarden/secrets/$LATEST --insecure'
+    'mc alias set m http://192.168.10.121:9000 "$AK" "$SK" --insecure >/dev/null 2>&1; LINE=$(mc ls m/backup-bitwarden/secrets/ --insecure 2>/dev/null | sort | tail -1); LATEST=${LINE##* }; echo "Telechargement de $LATEST..." >&2; mc cat m/backup-bitwarden/secrets/$LATEST --insecure'
 
 echo -n "Demarrage"
 until kubectl get pod mc-secret-restore -n $namespace --no-headers 2>/dev/null | grep -q .; do
@@ -69,7 +69,7 @@ if [ "$PHASE" != "Succeeded" ]; then
     exit 1
 fi
 
-kubectl logs -n $namespace mc-secret-restore | kubectl apply -f -
+kubectl logs -n $namespace mc-secret-restore | sed -n '/^apiVersion:/,$p' | kubectl apply -f -
 kubectl delete pod mc-secret-restore -n $namespace 2>/dev/null || true
 echo "Secret custom-secret restaure."
 

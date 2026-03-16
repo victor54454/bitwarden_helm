@@ -36,7 +36,7 @@ spec:
             [ ! -f /backups/vault.bak ] || mv /backups/vault.bak \"/backups/vault.bak.$(date -r /backups/vault.bak -u +'%Y-%m-%dT%H:%M:%SZ')\";
             svr=\"$(echo \"${MSSQL_CONN_STRING}\" | grep -Po \"Data Source=tcp:\\K[^,]*(?=.*)\")\";
             pass=\"$(echo \"${MSSQL_CONN_STRING}\" | grep -Po \".*Password=\\K[^;]*(?=.*)\")\";
-            echo \"$pass\" | /opt/mssql-tools/bin/sqlcmd -S $svr -U SA -q \"BACKUP DATABASE [vault] TO DISK = '/var/opt/mssql/backups/vault.bak' WITH FORMAT, INIT\";
+            /opt/mssql-tools/bin/sqlcmd -S $svr -U SA -P \"$pass\" -Q \"BACKUP DATABASE [vault] TO DISK = '/var/opt/mssql/backups/vault.bak' WITH FORMAT, INIT\";
             rm -f /backups/vault.bak.*;
             echo 'Nettoyage PVC termine.'
             "
@@ -63,7 +63,7 @@ spec:
           - "-c"
         args: [
             "
-            mc alias set myminio http://192.168.10.99:9000 $MINIO_ACCESS_KEY $MINIO_SECRET_KEY --insecure;
+            mc alias set myminio http://192.168.10.121:9000 $MINIO_ACCESS_KEY $MINIO_SECRET_KEY --insecure;
             mc mb --ignore-existing myminio/backup-bitwarden --insecure;
             mc cp /backups/vault.bak myminio/backup-bitwarden/vault_$(date -u +'%Y-%m-%dT%H:%M:%SZ').bak --insecure;
             echo 'Upload MinIO termine.'

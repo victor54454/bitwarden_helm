@@ -56,10 +56,10 @@ kubectl run mc-secret-upload \
     --env="TS=${TIMESTAMP}" \
     --env="SECRET_YAML=${SECRET_B64}" \
     --command -- sh -c \
-    'mc alias set m http://192.168.10.99:9000 "$AK" "$SK" --insecure 2>/dev/null; mc mb --ignore-existing m/backup-bitwarden --insecure 2>/dev/null; printf "%s" "$SECRET_YAML" | base64 -d | mc pipe "m/backup-bitwarden/secrets/custom-secret_${TS}.yaml" --insecure'
+    'mc alias set m http://192.168.10.121:9000 "$AK" "$SK" --insecure 2>/dev/null; mc mb --ignore-existing m/backup-bitwarden --insecure 2>/dev/null; printf "%s" "$SECRET_YAML" | base64 -d | mc pipe "m/backup-bitwarden/secrets/custom-secret_${TS}.yaml" --insecure'
 
 # Attend que le pod se termine
-kubectl wait pod/mc-secret-upload -n $namespace --for=condition=Ready --timeout=60s 2>/dev/null || true
+kubectl wait pod/mc-secret-upload -n $namespace --for=jsonpath='{.status.phase}'=Running --timeout=60s 2>/dev/null || true
 kubectl logs -n $namespace mc-secret-upload -f 2>/dev/null || true
 kubectl wait pod/mc-secret-upload -n $namespace --for=jsonpath='{.status.phase}'=Succeeded --timeout=60s 2>/dev/null || true
 kubectl delete pod mc-secret-upload -n $namespace 2>/dev/null || true
