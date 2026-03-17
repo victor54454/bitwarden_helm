@@ -312,7 +312,7 @@ kubectl get pods -n bitwarden
 ```bash 
 bash backup_bitwarden/database-restore/full-restore.sh
 ```
-Il va te demander les credentials MinIO, puis faire une pause pour que tu relances helm install manuellement sur un autre terminal. Une fois helm install terminer la il faudra revenir sur l'ancien terminal pour appuyer sur entrée. 
+Il va te demander les identifiants MinIO et l'endroit où se situe la clef privée qui va avec la clef publique qui a chiffré le backup, puis faire une pause pour que tu relances helm install manuellement sur un autre terminal. Une fois helm install terminé, il faudra revenir sur l'ancien terminal pour appuyer sur entrée.
 
 #### Etape 4 — Vérifier
 Une fois tout terminé, connecte-toi sur l'interface Bitwarden et vérifie que ton compte est bien là.

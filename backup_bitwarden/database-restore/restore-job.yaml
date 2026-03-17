@@ -1,4 +1,5 @@
 ---
+# Prerequis : le ConfigMap "bitwarden-restore-id" doit exister (cree par full-restore.sh)
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -8,7 +9,7 @@ metadata:
     app: bitwarden-restore
 spec:
   ttlSecondsAfterFinished: 300
-  backoffLimit: 1
+  backoffLimit: 0
   template:
     metadata:
       name: "bitwarden-restore"
@@ -30,21 +31,57 @@ spec:
             secretKeyRef:
               name: bitwarden-minio-credentials
               key: secretKey
+        - name: RESTORE_ID
+          valueFrom:
+            configMapKeyRef:
+              name: bitwarden-restore-id
+              key: id
         volumeMounts:
           - name: mssql-backups
             mountPath: /backups
         command:
           - "/bin/sh"
           - "-c"
-        args: [
-            "
-            mc alias set myminio http://192.168.10.121:9000 $MINIO_ACCESS_KEY $MINIO_SECRET_KEY --insecure;
-            LATEST=$(mc find myminio/backup-bitwarden --name \"*.bak\" --insecure | sort | tail -1);
-            echo \"Téléchargement de $LATEST depuis MinIO...\";
-            mc cp \"$LATEST\" /backups/vault.bak --insecure;
-            echo 'Téléchargement terminé.'
-            "
-        ]
+        args:
+          - |
+            set -e
+            mc alias set myminio http://192.168.10.121:9000 $MINIO_ACCESS_KEY $MINIO_SECRET_KEY --insecure
+            echo "Telechargement du backup : vault_${RESTORE_ID}.bak.gpg"
+            mc cp "myminio/backup-bitwarden/vault_${RESTORE_ID}.bak.gpg" /backups/vault.bak.gpg --insecure \
+              || { echo "ERREUR: fichier vault_${RESTORE_ID}.bak.gpg introuvable sur MinIO" >&2; exit 1; }
+            echo "Telechargement termine."
+      - name: decrypt-gpg
+        image: "alpine"
+        env:
+        - name: GPG_PASSPHRASE
+          valueFrom:
+            secretKeyRef:
+              name: bitwarden-gpg-private-key
+              key: passphrase
+        volumeMounts:
+          - name: mssql-backups
+            mountPath: /backups
+          - name: gpg-private-key
+            mountPath: /gpg
+        command:
+          - "/bin/sh"
+          - "-c"
+        args:
+          - |
+            set -e
+            apk add --no-cache gnupg -q
+            echo "$GPG_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback \
+              --passphrase-fd 0 --import /gpg/private.asc 2>/dev/null \
+              || { echo "ERREUR: import cle GPG privee echoue" >&2; exit 1; }
+            echo "$GPG_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback \
+              --passphrase-fd 0 --decrypt /backups/vault.bak.gpg > /backups/vault.bak \
+              || { echo "ERREUR: dechiffrement echoue (mauvaise passphrase ?)" >&2; exit 1; }
+            if [ ! -s /backups/vault.bak ]; then
+              echo "ERREUR: vault.bak vide apres dechiffrement" >&2
+              exit 1
+            fi
+            rm /backups/vault.bak.gpg
+            echo "Dechiffrement GPG termine."
       containers:
       - name: restore-db
         image: "mcr.microsoft.com/mssql-tools"
@@ -60,15 +97,19 @@ spec:
         command:
           - "/bin/bash"
           - "-c"
-        args: [
-            "
-            svr=\"$(echo \"${MSSQL_CONN_STRING}\" | grep -Po \"Data Source=tcp:\\K[^,]*(?=.*)\")\";
-            pass=\"$(echo \"${MSSQL_CONN_STRING}\" | grep -Po \".*Password=\\K[^;]*(?=.*)\")\";
-            /opt/mssql-tools/bin/sqlcmd -S $svr -U SA -P \"$pass\" -Q \"ALTER DATABASE [vault] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; RESTORE DATABASE [vault] FROM DISK = '/var/opt/mssql/backups/vault.bak' WITH REPLACE; ALTER DATABASE [vault] SET MULTI_USER;\"
-            "
-        ]
+        args:
+          - |
+            set -e
+            svr="$(echo "${MSSQL_CONN_STRING}" | grep -Po "Data Source=tcp:\K[^,]*(?=.*)")"
+            pass="$(echo "${MSSQL_CONN_STRING}" | grep -Po ".*Password=\K[^;]*(?=.*)")"
+            /opt/mssql-tools/bin/sqlcmd -S "$svr" -U SA -P "$pass" \
+              -Q "ALTER DATABASE [vault] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; RESTORE DATABASE [vault] FROM DISK = '/var/opt/mssql/backups/vault.bak' WITH REPLACE; ALTER DATABASE [vault] SET MULTI_USER;"
+            echo "Restore base de donnees termine."
       restartPolicy: Never
       volumes:
         - name: mssql-backups
           persistentVolumeClaim:
             claimName: bitwarden-self-host-mssqlbackups
+        - name: gpg-private-key
+          secret:
+            secretName: bitwarden-gpg-private-key

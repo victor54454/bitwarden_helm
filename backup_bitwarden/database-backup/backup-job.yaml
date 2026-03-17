@@ -8,7 +8,7 @@ metadata:
     app: bitwarden-backup
 spec:
   ttlSecondsAfterFinished: 300
-  backoffLimit: 1
+  backoffLimit: 0
   template:
     metadata:
       name: "bitwarden-backup"
@@ -33,12 +33,36 @@ spec:
           - "-c"
         args: [
             "
+            set -e;
             [ ! -f /backups/vault.bak ] || mv /backups/vault.bak \"/backups/vault.bak.$(date -r /backups/vault.bak -u +'%Y-%m-%dT%H:%M:%SZ')\";
-            svr=\"$(echo \"${MSSQL_CONN_STRING}\" | grep -Po \"Data Source=tcp:\\K[^,]*(?=.*)\")\";
-            pass=\"$(echo \"${MSSQL_CONN_STRING}\" | grep -Po \".*Password=\\K[^;]*(?=.*)\")\";
+            svr=\"$(echo \"${MSSQL_CONN_STRING}\" | grep -Po \"Data Source=tcp:\\K[^,]*(?=.*)\")\" ;
+            pass=\"$(echo \"${MSSQL_CONN_STRING}\" | grep -Po \".*Password=\\K[^;]*(?=.*)\")\" ;
             /opt/mssql-tools/bin/sqlcmd -S $svr -U SA -P \"$pass\" -Q \"BACKUP DATABASE [vault] TO DISK = '/var/opt/mssql/backups/vault.bak' WITH FORMAT, INIT\";
             rm -f /backups/vault.bak.*;
-            echo 'Nettoyage PVC termine.'
+            echo 'Backup SQL termine.'
+            "
+        ]
+      - name: encrypt-gpg
+        image: "alpine"
+        volumeMounts:
+          - name: mssql-backups
+            mountPath: /backups
+          - name: gpg-public-key
+            mountPath: /gpg
+        command:
+          - "/bin/sh"
+          - "-c"
+        args: [
+            "
+            set -e &&
+            apk add --no-cache gnupg -q &&
+            gpg --import /gpg/public.asc 2>/dev/null &&
+            RECIP=$(gpg --list-keys --with-colons --fingerprint | awk -F: '$1==\"fpr\"{print $10; exit}') &&
+            [ -n \"$RECIP\" ] || { echo 'ERREUR: cle GPG introuvable' >&2; exit 1; } &&
+            echo \"Cle GPG: $RECIP\" &&
+            gpg --batch --yes --trust-model always --encrypt --recipient \"$RECIP\" /backups/vault.bak &&
+            rm /backups/vault.bak &&
+            echo 'Chiffrement GPG termine.'
             "
         ]
       containers:
@@ -55,6 +79,11 @@ spec:
             secretKeyRef:
               name: bitwarden-minio-credentials
               key: secretKey
+        - name: BACKUP_ID
+          valueFrom:
+            configMapKeyRef:
+              name: bitwarden-backup-id
+              key: id
         volumeMounts:
           - name: mssql-backups
             mountPath: /backups
@@ -63,10 +92,11 @@ spec:
           - "-c"
         args: [
             "
+            set -e;
             mc alias set myminio http://192.168.10.121:9000 $MINIO_ACCESS_KEY $MINIO_SECRET_KEY --insecure;
             mc mb --ignore-existing myminio/backup-bitwarden --insecure;
-            mc cp /backups/vault.bak myminio/backup-bitwarden/vault_$(date -u +'%Y-%m-%dT%H:%M:%SZ').bak --insecure;
-            echo 'Upload MinIO termine.'
+            mc cp /backups/vault.bak.gpg myminio/backup-bitwarden/vault_${BACKUP_ID}.bak.gpg --insecure;
+            echo \"Upload termine : vault_${BACKUP_ID}.bak.gpg\"
             "
         ]
       restartPolicy: Never
@@ -74,3 +104,6 @@ spec:
         - name: mssql-backups
           persistentVolumeClaim:
             claimName: bitwarden-self-host-mssqlbackups
+        - name: gpg-public-key
+          secret:
+            secretName: bitwarden-gpg-public-key

@@ -1,10 +1,6 @@
 ---
-# IMPORTANT : lancer ce job APRES "helm install" mais AVANT de demarrer les pods Bitwarden
-# Ordre de restore complet :
-#   1. kubectl apply -f custom-secret_TIMESTAMP.yaml
-#   2. helm install bitwarden ./self-host -f values.yaml -n bitwarden
-#   3. kubectl apply -f pvc-restore-job.yaml  (ce fichier)
-#   4. bash db-restore.sh
+# IMPORTANT : lancer ce job apres "helm install" mais avant de demarrer les pods Bitwarden
+# Prerequis : le ConfigMap "bitwarden-restore-id" doit exister (cree par full-restore.sh)
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -15,15 +11,15 @@ metadata:
     app: bitwarden-pvc-restore
 spec:
   ttlSecondsAfterFinished: 300
-  backoffLimit: 1
+  backoffLimit: 0
   template:
     metadata:
       labels:
         app.kubernetes.io/component: bitwarden-pvc-restore
         app: bitwarden-pvc-restore
     spec:
-      containers:
-      - name: restore-pvcs
+      initContainers:
+      - name: download-minio
         image: "minio/mc"
         env:
         - name: MINIO_ACCESS_KEY
@@ -36,31 +32,114 @@ spec:
             secretKeyRef:
               name: bitwarden-minio-credentials
               key: secretKey
+        - name: RESTORE_ID
+          valueFrom:
+            configMapKeyRef:
+              name: bitwarden-restore-id
+              key: id
         volumeMounts:
+          - name: encrypted
+            mountPath: /encrypted
+        command:
+          - "/bin/sh"
+          - "-c"
+        args:
+          - |
+            set -e
+            mc alias set myminio http://192.168.10.121:9000 $MINIO_ACCESS_KEY $MINIO_SECRET_KEY --insecure
+            echo "Restore ID : $RESTORE_ID"
+
+            download_pvc() {
+              NAME=$1
+              REQUIRED=${2:-false}
+              SRC="myminio/backup-bitwarden/pvcs/${NAME}_${RESTORE_ID}.tar.gz.gpg"
+              DST="/encrypted/${NAME}.tar.gz.gpg"
+              echo "Telechargement $NAME depuis $SRC ..."
+              if mc cp "$SRC" "$DST" --insecure 2>/dev/null; then
+                echo "$NAME: telechargement OK."
+              elif [ "$REQUIRED" = "true" ]; then
+                echo "ERREUR: backup $NAME introuvable : $SRC" >&2
+                exit 1
+              else
+                echo "$NAME: pas de backup trouve, skip."
+              fi
+            }
+
+            download_pvc dataprotection true
+            download_pvc attachments    false
+            download_pvc licenses       false
+
+            echo 'Telechargements termines.'
+      containers:
+      - name: restore-pvcs
+        image: "alpine"
+        env:
+        - name: GPG_PASSPHRASE
+          valueFrom:
+            secretKeyRef:
+              name: bitwarden-gpg-private-key
+              key: passphrase
+        volumeMounts:
+          - name: encrypted
+            mountPath: /encrypted
           - name: dataprotection
             mountPath: /pvcs/dataprotection
           - name: attachments
             mountPath: /pvcs/attachments
           - name: licenses
             mountPath: /pvcs/licenses
+          - name: gpg-private-key
+            mountPath: /gpg
         command:
           - "/bin/sh"
           - "-c"
         args:
           - |
-            mc alias set myminio http://192.168.10.121:9000 $MINIO_ACCESS_KEY $MINIO_SECRET_KEY --insecure
+            set -e
+            apk add --no-cache gnupg -q
 
-            echo 'Restore dataprotection...'
-            LINE=$(mc ls myminio/backup-bitwarden/pvcs/dataprotection_ --insecure 2>/dev/null | sort | tail -1); LATEST=${LINE##* }
-            test -n "$LATEST" && rm -rf /pvcs/dataprotection/* && mc cp --recursive myminio/backup-bitwarden/pvcs/$LATEST /pvcs/dataprotection/ --insecure || echo 'dataprotection: aucun backup trouve, skip.'
+            echo "$GPG_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback \
+              --passphrase-fd 0 --import /gpg/private.asc 2>/dev/null \
+              || { echo "ERREUR: import cle GPG privee echoue" >&2; exit 1; }
 
-            echo 'Restore attachments...'
-            LINE=$(mc ls myminio/backup-bitwarden/pvcs/attachments_ --insecure 2>/dev/null | sort | tail -1); LATEST=${LINE##* }
-            test -n "$LATEST" && rm -rf /pvcs/attachments/* && mc cp --recursive myminio/backup-bitwarden/pvcs/$LATEST /pvcs/attachments/ --insecure || echo 'attachments: aucun backup trouve, skip.'
+            restore_pvc() {
+              NAME=$1
+              DST=$2
+              REQUIRED=${3:-false}
 
-            echo 'Restore licenses...'
-            LINE=$(mc ls myminio/backup-bitwarden/pvcs/licenses_ --insecure 2>/dev/null | sort | tail -1); LATEST=${LINE##* }
-            test -n "$LATEST" && rm -rf /pvcs/licenses/* && mc cp --recursive myminio/backup-bitwarden/pvcs/$LATEST /pvcs/licenses/ --insecure || echo 'licenses: aucun backup trouve, skip.'
+              if [ ! -f "/encrypted/${NAME}.tar.gz.gpg" ]; then
+                echo "$NAME: pas de fichier chiffre, skip."
+                return 0
+              fi
+
+              echo "Dechiffrement $NAME..."
+              echo "$GPG_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback \
+                --passphrase-fd 0 --decrypt "/encrypted/${NAME}.tar.gz.gpg" \
+                > "/tmp/${NAME}.tar.gz" \
+                || { echo "ERREUR: dechiffrement $NAME echoue (mauvaise passphrase ?)" >&2; exit 1; }
+
+              # Verification que le tar n'est pas vide
+              if [ ! -s "/tmp/${NAME}.tar.gz" ]; then
+                echo "ERREUR: archive $NAME vide apres dechiffrement" >&2
+                exit 1
+              fi
+
+              echo "Extraction $NAME vers $DST..."
+              rm -rf "${DST:?}"/*
+              tar -xzf "/tmp/${NAME}.tar.gz" -C "$DST" \
+                || { echo "ERREUR: extraction $NAME echouee" >&2; exit 1; }
+
+              FILES=$(find "$DST" -type f | wc -l)
+              if [ "$FILES" -eq 0 ] && [ "$REQUIRED" = "true" ]; then
+                echo "ERREUR: $NAME PVC est vide apres restore !" >&2
+                exit 1
+              fi
+              echo "$NAME: restaure OK ($FILES fichiers)."
+            }
+
+            restore_pvc dataprotection /pvcs/dataprotection true
+            restore_pvc attachments    /pvcs/attachments    false
+            restore_pvc licenses       /pvcs/licenses       false
 
             echo 'Restore PVCs termine.'
       restartPolicy: Never
@@ -74,3 +153,8 @@ spec:
         - name: licenses
           persistentVolumeClaim:
             claimName: bitwarden-self-host-licenses
+        - name: encrypted
+          emptyDir: {}
+        - name: gpg-private-key
+          secret:
+            secretName: bitwarden-gpg-private-key

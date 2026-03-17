@@ -1,41 +1,40 @@
 #!/bin/bash
-namespace="bitwarden"
+# Usage interne : appele par full-restore.sh apres creation du ConfigMap bitwarden-restore-id
+set -euo pipefail
 
-# Supprime l'ancien job s'il existe encore
-kubectl delete job -n $namespace -l app=bitwarden-restore 2>/dev/null || true
+namespace="bitwarden"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Supprime l'ancien job s'il existe
+kubectl delete job -n "$namespace" -l app=bitwarden-restore 2>/dev/null || true
 sleep 2
 
-# Lance le job de restore
-kubectl apply -n $namespace -f $(dirname "$0")/restore-job.yaml
+kubectl apply -n "$namespace" -f "$SCRIPT_DIR/restore-job.yaml"
 
-# Attend que le pod soit créé
-echo -n "Démarrage du pod"
-until kubectl get pods -n $namespace -l app=bitwarden-restore --no-headers 2>/dev/null | grep -q .; do
-    echo -n "."
-    sleep 1
+echo -n "  Démarrage"
+until kubectl get pods -n "$namespace" -l app=bitwarden-restore --no-headers 2>/dev/null | grep -q .; do
+    echo -n "."; sleep 1
 done
 echo ""
 
-POD=$(kubectl get pods -n $namespace -l app=bitwarden-restore -o jsonpath="{.items[0].metadata.name}")
+POD=$(kubectl get pods -n "$namespace" -l app=bitwarden-restore -o jsonpath='{.items[0].metadata.name}')
+echo "  Pod : $POD"
 
-# Suit les logs du téléchargement depuis MinIO
-echo "=== Téléchargement depuis MinIO ==="
-kubectl wait -n $namespace --for=jsonpath='{.status.initContainerStatuses[0].state.running}' pod/$POD --timeout=60s 2>/dev/null || true
-kubectl logs -n $namespace $POD -c download-minio -f 2>/dev/null || true
+echo "  --- download-minio ---"
+kubectl logs -n "$namespace" "$POD" -c download-minio -f 2>/dev/null || true
+echo "  --- decrypt-gpg ---"
+kubectl logs -n "$namespace" "$POD" -c decrypt-gpg -f 2>/dev/null || true
+echo "  --- restore-db ---"
+kubectl logs -n "$namespace" "$POD" -c restore-db -f 2>/dev/null || true
 
-# Suit les logs de la restauration SQL
-echo ""
-echo "=== Restauration de la base de données ==="
-kubectl wait -n $namespace --for=jsonpath='{.status.containerStatuses[0].state.running}' pod/$POD --timeout=60s 2>/dev/null || true
-kubectl logs -n $namespace $POD -c restore-db -f 2>/dev/null || true
+kubectl wait -n "$namespace" --for=condition=complete job/bitwarden-restore --timeout=300s 2>/dev/null \
+    && echo "" || echo ""
 
-# Vérifie le statut final du job
-echo ""
-kubectl wait -n $namespace --for=condition=complete job/bitwarden-restore --timeout=120s 2>/dev/null
-if [ $? -eq 0 ]; then
-    echo "Restore terminé avec succès."
-else
-    echo "ATTENTION : le job ne s'est pas terminé correctement."
-    kubectl describe pod -n $namespace $POD
+SUCCEEDED=$(kubectl get job bitwarden-restore -n "$namespace" -o jsonpath='{.status.succeeded}' 2>/dev/null || echo "0")
+if [ "$SUCCEEDED" != "1" ]; then
+    FAILED=$(kubectl get job bitwarden-restore -n "$namespace" -o jsonpath='{.status.failed}' 2>/dev/null || echo "?")
+    echo "ERREUR : restore DB echoue (succeeded=$SUCCEEDED, failed=$FAILED)" >&2
     exit 1
 fi
+
+echo "  Restore DB : OK"
