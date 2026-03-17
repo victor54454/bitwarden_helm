@@ -66,18 +66,18 @@ spec:
             "
         ]
       containers:
-      - name: upload-minio
-        image: "minio/mc"
+      - name: upload-s3
+        image: "amazon/aws-cli"
         env:
-        - name: MINIO_ACCESS_KEY
+        - name: AWS_ACCESS_KEY_ID
           valueFrom:
             secretKeyRef:
-              name: bitwarden-minio-credentials
+              name: bitwarden-s3-credentials
               key: accessKey
-        - name: MINIO_SECRET_KEY
+        - name: AWS_SECRET_ACCESS_KEY
           valueFrom:
             secretKeyRef:
-              name: bitwarden-minio-credentials
+              name: bitwarden-s3-credentials
               key: secretKey
         - name: BACKUP_ID
           valueFrom:
@@ -93,9 +93,7 @@ spec:
         args: [
             "
             set -e;
-            mc alias set myminio http://192.168.10.121:9000 $MINIO_ACCESS_KEY $MINIO_SECRET_KEY --insecure;
-            mc mb --ignore-existing myminio/backup-bitwarden --insecure;
-            mc cp /backups/vault.bak.gpg myminio/backup-bitwarden/vault_${BACKUP_ID}.bak.gpg --insecure;
+            aws s3 cp /backups/vault.bak.gpg s3://database-repairsoft/backup_bitwarden/vault_${BACKUP_ID}.bak.gpg --endpoint-url https://s3.rbx.io.cloud.ovh.net;
             echo \"Upload termine : vault_${BACKUP_ID}.bak.gpg\"
             "
         ]

@@ -8,6 +8,8 @@ set -euo pipefail
 namespace="bitwarden"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 MODE="${1:-complet}"
+S3_ENDPOINT="https://s3.rbx.io.cloud.ovh.net"
+S3_PATH="s3://database-repairsoft/backup_bitwarden"
 
 echo "=========================================="
 echo " RESTORE BITWARDEN [mode: $MODE]"
@@ -49,8 +51,8 @@ trap cleanup EXIT
 
 echo "--- 0. Credentials & configuration ---"
 
-read -p "MinIO Access Key : " ACCESS_KEY
-read -s -p "MinIO Secret Key : " SECRET_KEY; echo ""
+read -p "S3 OVH Access Key : " ACCESS_KEY
+read -s -p "S3 OVH Secret Key : " SECRET_KEY; echo ""
 read -p "Chemin vers votre cle privee GPG (.asc) : " GPG_PRIVATE_KEY_PATH
 read -s -p "Passphrase GPG : " GPG_PASSPHRASE; echo ""
 
@@ -68,11 +70,11 @@ echo "Lecture du dernier backup disponible sur MinIO..."
 kubectl delete pod mc-read-latest -n "$namespace" 2>/dev/null || true
 kubectl run mc-read-latest \
     --restart=Never -n "$namespace" \
-    --image=minio/mc \
-    --env="AK=${ACCESS_KEY}" \
-    --env="SK=${SECRET_KEY}" \
+    --image=amazon/aws-cli \
+    --env="AWS_ACCESS_KEY_ID=${ACCESS_KEY}" \
+    --env="AWS_SECRET_ACCESS_KEY=${SECRET_KEY}" \
     --command -- sh -c \
-    'set -e; mc alias set m http://192.168.10.121:9000 "$AK" "$SK" --insecure -q 2>/dev/null; mc cat m/backup-bitwarden/latest --insecure'
+    'set -e; aws s3 cp s3://database-repairsoft/backup_bitwarden/latest - --endpoint-url https://s3.rbx.io.cloud.ovh.net'
 
 LATEST_ID=""
 if kubectl wait pod/mc-read-latest -n "$namespace" \
@@ -84,7 +86,7 @@ kubectl delete pod mc-read-latest -n "$namespace" 2>/dev/null || true
 if [ -n "$LATEST_ID" ]; then
     echo "Dernier backup disponible : $LATEST_ID"
 else
-    echo "Impossible de lire le fichier latest. Verifiez MinIO : http://192.168.10.121:9000"
+    echo "Impossible de lire le fichier latest. Verifiez S3 OVH : https://s3.rbx.io.cloud.ovh.net"
     echo "(Le fichier 'latest' est cree par db-backup.sh apres chaque backup reussi)"
 fi
 
@@ -102,11 +104,11 @@ echo "Backup selectionne : $RESTORE_ID"
 kubectl create namespace "$namespace" 2>/dev/null || true
 
 if [ "$MODE" = "complet" ]; then
-    kubectl delete secret bitwarden-minio-credentials -n "$namespace" 2>/dev/null || true
-    kubectl create secret generic bitwarden-minio-credentials -n "$namespace" \
+    kubectl delete secret bitwarden-s3-credentials -n "$namespace" 2>/dev/null || true
+    kubectl create secret generic bitwarden-s3-credentials -n "$namespace" \
         --from-literal=accessKey="$ACCESS_KEY" \
         --from-literal=secretKey="$SECRET_KEY"
-    echo "Secret bitwarden-minio-credentials cree."
+    echo "Secret bitwarden-s3-credentials cree."
 fi
 
 kubectl delete secret bitwarden-gpg-private-key -n "$namespace" 2>/dev/null || true
@@ -130,12 +132,12 @@ if [ "$MODE" = "complet" ]; then
 
     kubectl delete pod mc-secret-restore -n "$namespace" 2>/dev/null || true
     kubectl run mc-secret-restore \
-        --restart=Never -n "$namespace" --image=minio/mc \
-        --env="AK=${ACCESS_KEY}" \
-        --env="SK=${SECRET_KEY}" \
+        --restart=Never -n "$namespace" --image=amazon/aws-cli \
+        --env="AWS_ACCESS_KEY_ID=${ACCESS_KEY}" \
+        --env="AWS_SECRET_ACCESS_KEY=${SECRET_KEY}" \
         --env="RESTORE_ID=${RESTORE_ID}" \
         --command -- sh -c \
-        'set -e; mc alias set m http://192.168.10.121:9000 "$AK" "$SK" --insecure -q 2>/dev/null; echo "Telechargement secrets/custom-secret_${RESTORE_ID}.yaml..."; mc cat "m/backup-bitwarden/secrets/custom-secret_${RESTORE_ID}.yaml" --insecure'
+        'set -e; echo "Telechargement secrets/custom-secret_${RESTORE_ID}.yaml..."; aws s3 cp "s3://database-repairsoft/backup_bitwarden/secrets/custom-secret_${RESTORE_ID}.yaml" - --endpoint-url https://s3.rbx.io.cloud.ovh.net'
 
     kubectl wait pod/mc-secret-restore -n "$namespace" \
         --for=jsonpath='{.status.phase}'=Succeeded --timeout=60s 2>/dev/null || {
@@ -190,8 +192,8 @@ if [ "$MODE" = "complet" ] || [ "$MODE" = "--pvcs-only" ]; then
     POD_PVC=$(kubectl get pods -n "$namespace" -l app=bitwarden-pvc-restore -o jsonpath='{.items[0].metadata.name}')
     echo "  Pod : $POD_PVC"
 
-    echo "  --- download-minio ---"
-    kubectl logs -n "$namespace" "$POD_PVC" -c download-minio -f 2>/dev/null || true
+    echo "  --- download-s3 ---"
+    kubectl logs -n "$namespace" "$POD_PVC" -c download-s3 -f 2>/dev/null || true
     echo "  --- restore-pvcs ---"
     kubectl logs -n "$namespace" "$POD_PVC" -c restore-pvcs -f 2>/dev/null || true
 

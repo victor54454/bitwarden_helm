@@ -19,18 +19,18 @@ spec:
         app: bitwarden-pvc-restore
     spec:
       initContainers:
-      - name: download-minio
-        image: "minio/mc"
+      - name: download-s3
+        image: "amazon/aws-cli"
         env:
-        - name: MINIO_ACCESS_KEY
+        - name: AWS_ACCESS_KEY_ID
           valueFrom:
             secretKeyRef:
-              name: bitwarden-minio-credentials
+              name: bitwarden-s3-credentials
               key: accessKey
-        - name: MINIO_SECRET_KEY
+        - name: AWS_SECRET_ACCESS_KEY
           valueFrom:
             secretKeyRef:
-              name: bitwarden-minio-credentials
+              name: bitwarden-s3-credentials
               key: secretKey
         - name: RESTORE_ID
           valueFrom:
@@ -46,16 +46,15 @@ spec:
         args:
           - |
             set -e
-            mc alias set myminio http://192.168.10.121:9000 $MINIO_ACCESS_KEY $MINIO_SECRET_KEY --insecure
             echo "Restore ID : $RESTORE_ID"
 
             download_pvc() {
               NAME=$1
               REQUIRED=${2:-false}
-              SRC="myminio/backup-bitwarden/pvcs/${NAME}_${RESTORE_ID}.tar.gz.gpg"
+              SRC="s3://database-repairsoft/backup_bitwarden/pvcs/${NAME}_${RESTORE_ID}.tar.gz.gpg"
               DST="/encrypted/${NAME}.tar.gz.gpg"
               echo "Telechargement $NAME depuis $SRC ..."
-              if mc cp "$SRC" "$DST" --insecure 2>/dev/null; then
+              if aws s3 cp "$SRC" "$DST" --endpoint-url https://s3.rbx.io.cloud.ovh.net 2>/dev/null; then
                 echo "$NAME: telechargement OK."
               elif [ "$REQUIRED" = "true" ]; then
                 echo "ERREUR: backup $NAME introuvable : $SRC" >&2

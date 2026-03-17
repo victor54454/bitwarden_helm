@@ -18,18 +18,18 @@ spec:
         app: bitwarden-restore
     spec:
       initContainers:
-      - name: download-minio
-        image: "minio/mc"
+      - name: download-s3
+        image: "amazon/aws-cli"
         env:
-        - name: MINIO_ACCESS_KEY
+        - name: AWS_ACCESS_KEY_ID
           valueFrom:
             secretKeyRef:
-              name: bitwarden-minio-credentials
+              name: bitwarden-s3-credentials
               key: accessKey
-        - name: MINIO_SECRET_KEY
+        - name: AWS_SECRET_ACCESS_KEY
           valueFrom:
             secretKeyRef:
-              name: bitwarden-minio-credentials
+              name: bitwarden-s3-credentials
               key: secretKey
         - name: RESTORE_ID
           valueFrom:
@@ -45,10 +45,9 @@ spec:
         args:
           - |
             set -e
-            mc alias set myminio http://192.168.10.121:9000 $MINIO_ACCESS_KEY $MINIO_SECRET_KEY --insecure
             echo "Telechargement du backup : vault_${RESTORE_ID}.bak.gpg"
-            mc cp "myminio/backup-bitwarden/vault_${RESTORE_ID}.bak.gpg" /backups/vault.bak.gpg --insecure \
-              || { echo "ERREUR: fichier vault_${RESTORE_ID}.bak.gpg introuvable sur MinIO" >&2; exit 1; }
+            aws s3 cp "s3://database-repairsoft/backup_bitwarden/vault_${RESTORE_ID}.bak.gpg" /backups/vault.bak.gpg --endpoint-url https://s3.rbx.io.cloud.ovh.net \
+              || { echo "ERREUR: fichier vault_${RESTORE_ID}.bak.gpg introuvable sur S3" >&2; exit 1; }
             echo "Telechargement termine."
       - name: decrypt-gpg
         image: "alpine"

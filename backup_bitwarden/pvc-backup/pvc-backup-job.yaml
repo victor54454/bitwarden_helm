@@ -67,17 +67,17 @@ spec:
             echo 'Chiffrement PVCs termine.'
       containers:
       - name: backup-pvcs
-        image: "minio/mc"
+        image: "amazon/aws-cli"
         env:
-        - name: MINIO_ACCESS_KEY
+        - name: AWS_ACCESS_KEY_ID
           valueFrom:
             secretKeyRef:
-              name: bitwarden-minio-credentials
+              name: bitwarden-s3-credentials
               key: accessKey
-        - name: MINIO_SECRET_KEY
+        - name: AWS_SECRET_ACCESS_KEY
           valueFrom:
             secretKeyRef:
-              name: bitwarden-minio-credentials
+              name: bitwarden-s3-credentials
               key: secretKey
         - name: BACKUP_ID
           valueFrom:
@@ -93,15 +93,13 @@ spec:
         args:
           - |
             set -e
-            mc alias set myminio http://192.168.10.121:9000 $MINIO_ACCESS_KEY $MINIO_SECRET_KEY --insecure
-            mc mb --ignore-existing myminio/backup-bitwarden --insecure
 
             UPLOADED=0
             for f in /encrypted/*.gpg; do
               [ -f "$f" ] || continue
               NAME=$(basename "$f" .tar.gz.gpg)
-              DEST="myminio/backup-bitwarden/pvcs/${NAME}_${BACKUP_ID}.tar.gz.gpg"
-              mc cp "$f" "$DEST" --insecure || { echo "ERREUR: upload $NAME echoue" >&2; exit 1; }
+              DEST="s3://database-repairsoft/backup_bitwarden/pvcs/${NAME}_${BACKUP_ID}.tar.gz.gpg"
+              aws s3 cp "$f" "$DEST" --endpoint-url https://s3.rbx.io.cloud.ovh.net || { echo "ERREUR: upload $NAME echoue" >&2; exit 1; }
               echo "Upload OK : pvcs/${NAME}_${BACKUP_ID}.tar.gz.gpg"
               UPLOADED=$((UPLOADED + 1))
             done

@@ -4,6 +4,8 @@ set -euo pipefail
 namespace="bitwarden"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BACKUP_ID=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+S3_ENDPOINT="https://s3.rbx.io.cloud.ovh.net"
+S3_PATH="s3://database-repairsoft/backup_bitwarden"
 
 echo "=========================================="
 echo " BACKUP BITWARDEN"
@@ -51,13 +53,13 @@ if ! kubectl get secret bitwarden-gpg-public-key -n "$namespace" &>/dev/null; th
     exit 1
 fi
 
-if ! kubectl get secret bitwarden-minio-credentials -n "$namespace" &>/dev/null; then
-    echo "ERREUR : secret 'bitwarden-minio-credentials' introuvable." >&2
+if ! kubectl get secret bitwarden-s3-credentials -n "$namespace" &>/dev/null; then
+    echo "ERREUR : secret 'bitwarden-s3-credentials' introuvable." >&2
     exit 1
 fi
 
-ACCESS_KEY=$(kubectl get secret bitwarden-minio-credentials -n "$namespace" -o jsonpath='{.data.accessKey}' | base64 -d)
-SECRET_KEY=$(kubectl get secret bitwarden-minio-credentials -n "$namespace" -o jsonpath='{.data.secretKey}' | base64 -d)
+ACCESS_KEY=$(kubectl get secret bitwarden-s3-credentials -n "$namespace" -o jsonpath='{.data.accessKey}' | base64 -d)
+SECRET_KEY=$(kubectl get secret bitwarden-s3-credentials -n "$namespace" -o jsonpath='{.data.secretKey}' | base64 -d)
 
 # Crée le ConfigMap d'ID partagé entre tous les jobs de cette session
 kubectl delete configmap bitwarden-backup-id -n "$namespace" 2>/dev/null || true
@@ -87,8 +89,8 @@ echo "  --- backup-db ---"
 kubectl logs -n "$namespace" "$POD" -c backup-db -f 2>/dev/null || true
 echo "  --- encrypt-gpg ---"
 kubectl logs -n "$namespace" "$POD" -c encrypt-gpg -f 2>/dev/null || true
-echo "  --- upload-minio ---"
-kubectl logs -n "$namespace" "$POD" -c upload-minio -f 2>/dev/null || true
+echo "  --- upload-s3 ---"
+kubectl logs -n "$namespace" "$POD" -c upload-s3 -f 2>/dev/null || true
 
 check_job bitwarden-backup 300
 
@@ -102,13 +104,13 @@ SECRET_B64=$(kubectl get secret custom-secret -n "$namespace" -o yaml | base64 -
 kubectl delete pod mc-secret-upload -n "$namespace" 2>/dev/null || true
 kubectl run mc-secret-upload \
     --restart=Never -n "$namespace" \
-    --image=minio/mc \
-    --env="AK=${ACCESS_KEY}" \
-    --env="SK=${SECRET_KEY}" \
+    --image=amazon/aws-cli \
+    --env="AWS_ACCESS_KEY_ID=${ACCESS_KEY}" \
+    --env="AWS_SECRET_ACCESS_KEY=${SECRET_KEY}" \
     --env="TS=${BACKUP_ID}" \
     --env="SECRET_YAML=${SECRET_B64}" \
     --command -- sh -c \
-    'set -e; mc alias set m http://192.168.10.121:9000 "$AK" "$SK" --insecure -q 2>/dev/null; mc mb --ignore-existing m/backup-bitwarden --insecure -q 2>/dev/null; printf "%s" "$SECRET_YAML" | base64 -d | mc pipe "m/backup-bitwarden/secrets/custom-secret_${TS}.yaml" --insecure; echo "Secret uploade : secrets/custom-secret_${TS}.yaml"'
+    'set -e; printf "%s" "$SECRET_YAML" | base64 -d | aws s3 cp - "s3://database-repairsoft/backup_bitwarden/secrets/custom-secret_${TS}.yaml" --endpoint-url https://s3.rbx.io.cloud.ovh.net; echo "Secret uploade : secrets/custom-secret_${TS}.yaml"'
 
 kubectl wait pod/mc-secret-upload -n "$namespace" \
     --for=jsonpath='{.status.phase}'=Succeeded --timeout=60s 2>/dev/null || {
@@ -151,12 +153,12 @@ check_job bitwarden-pvc-backup 300
 kubectl delete pod mc-latest-write -n "$namespace" 2>/dev/null || true
 kubectl run mc-latest-write \
     --restart=Never -n "$namespace" \
-    --image=minio/mc \
-    --env="AK=${ACCESS_KEY}" \
-    --env="SK=${SECRET_KEY}" \
+    --image=amazon/aws-cli \
+    --env="AWS_ACCESS_KEY_ID=${ACCESS_KEY}" \
+    --env="AWS_SECRET_ACCESS_KEY=${SECRET_KEY}" \
     --env="BID=${BACKUP_ID}" \
     --command -- sh -c \
-    'set -e; mc alias set m http://192.168.10.121:9000 "$AK" "$SK" --insecure -q 2>/dev/null; printf "%s" "$BID" | mc pipe m/backup-bitwarden/latest --insecure; echo "Fichier latest mis a jour : $BID"'
+    'set -e; printf "%s" "$BID" | aws s3 cp - s3://database-repairsoft/backup_bitwarden/latest --endpoint-url https://s3.rbx.io.cloud.ovh.net; echo "Fichier latest mis a jour : $BID"'
 
 kubectl wait pod/mc-latest-write -n "$namespace" \
     --for=jsonpath='{.status.phase}'=Succeeded --timeout=30s 2>/dev/null || {

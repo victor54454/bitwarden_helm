@@ -20,8 +20,8 @@ echo ""
 POD=$(kubectl get pods -n "$namespace" -l app=bitwarden-restore -o jsonpath='{.items[0].metadata.name}')
 echo "  Pod : $POD"
 
-echo "  --- download-minio ---"
-kubectl logs -n "$namespace" "$POD" -c download-minio -f 2>/dev/null || true
+echo "  --- download-s3 ---"
+kubectl logs -n "$namespace" "$POD" -c download-s3 -f 2>/dev/null || true
 echo "  --- decrypt-gpg ---"
 kubectl logs -n "$namespace" "$POD" -c decrypt-gpg -f 2>/dev/null || true
 echo "  --- restore-db ---"
