@@ -61,10 +61,13 @@ if [ ! -f "$GPG_PRIVATE_KEY_PATH" ]; then
     exit 1
 fi
 
+# Namespace cree ici car mc-read-latest en a besoin avant meme la section setup secrets
+kubectl create namespace "$namespace" 2>/dev/null || true
+
 # ---------- Lister les backups disponibles ----------
 
 echo ""
-echo "Lecture du dernier backup disponible sur MinIO..."
+echo "Lecture du dernier backup disponible sur S3 OVH..."
 
 # Lecture du fichier "latest" ecrit par db-backup.sh apres chaque backup reussi
 kubectl delete pod mc-read-latest -n "$namespace" 2>/dev/null || true
@@ -100,8 +103,6 @@ fi
 echo "Backup selectionne : $RESTORE_ID"
 
 # ---------- Setup secrets K8s ----------
-
-kubectl create namespace "$namespace" 2>/dev/null || true
 
 if [ "$MODE" = "complet" ]; then
     kubectl delete secret bitwarden-s3-credentials -n "$namespace" 2>/dev/null || true
