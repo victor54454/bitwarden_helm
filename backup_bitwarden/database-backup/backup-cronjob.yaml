@@ -14,7 +14,7 @@ spec:
   failedJobsHistoryLimit: 3
   jobTemplate:
     spec:
-      #successfulJobsHistoryLimit: 3  # Garde uniquement les 3 derniers Jobs réussis
+      successfulJobsHistoryLimit: 3  # Garde uniquement les 3 derniers Jobs réussis
       failedJobsHistoryLimit: 1       # Garde uniquement le dernier Job échoué
       ttlSecondsAfterFinished: 300
       backoffLimit: 0
