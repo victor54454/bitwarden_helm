@@ -1,0 +1,254 @@
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: bitwarden-backup
+  labels:
+    app.kubernetes.io/component: bitwarden-backup
+    app: bitwarden-backup
+spec:
+  schedule: "1 12 * * *"
+  timeZone: "Europe/Paris"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      #successfulJobsHistoryLimit: 3  # Garde uniquement les 3 derniers Jobs réussis
+      failedJobsHistoryLimit: 1       # Garde uniquement le dernier Job échoué
+      ttlSecondsAfterFinished: 300
+      backoffLimit: 0
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/component: bitwarden-backup
+            app: bitwarden-backup
+        spec:
+          restartPolicy: Never
+          initContainers:
+
+          # --- backup-job.yaml : backup-db ---
+          - name: backup-db
+            image: "mcr.microsoft.com/mssql-tools"
+            env:
+            - name: MSSQL_CONN_STRING
+              valueFrom:
+                secretKeyRef:
+                  name: bitwarden-sql-connection-string
+                  key: globalSettings__sqlServer__connectionString
+            volumeMounts:
+              - name: mssql-backups
+                mountPath: /backups
+            command:
+              - "/bin/bash"
+              - "-c"
+            args: [
+                "
+                set -e;
+                [ ! -f /backups/vault.bak ] || mv /backups/vault.bak \"/backups/vault.bak.$(date -r /backups/vault.bak -u +'%Y-%m-%dT%H:%M:%SZ')\";
+                svr=\"$(echo \"${MSSQL_CONN_STRING}\" | grep -Po \"Data Source=tcp:\\K[^,]*(?=.*)\")\" ;
+                pass=\"$(echo \"${MSSQL_CONN_STRING}\" | grep -Po \".*Password=\\K[^;]*(?=.*)\")\" ;
+                /opt/mssql-tools/bin/sqlcmd -S $svr -U SA -P \"$pass\" -Q \"BACKUP DATABASE [vault] TO DISK = '/var/opt/mssql/backups/vault.bak' WITH FORMAT, INIT\";
+                rm -f /backups/vault.bak.*;
+                echo 'Backup SQL termine.'
+                "
+            ]
+
+          # --- backup-job.yaml : encrypt-gpg ---
+          - name: encrypt-gpg
+            image: "alpine"
+            volumeMounts:
+              - name: mssql-backups
+                mountPath: /backups
+              - name: gpg-public-key
+                mountPath: /gpg
+            command:
+              - "/bin/sh"
+              - "-c"
+            args: [
+                "
+                set -e &&
+                apk add --no-cache gnupg -q &&
+                gpg --import /gpg/public.asc 2>/dev/null &&
+                RECIP=$(gpg --list-keys --with-colons --fingerprint | awk -F: '$1==\"fpr\"{print $10; exit}') &&
+                [ -n \"$RECIP\" ] || { echo 'ERREUR: cle GPG introuvable' >&2; exit 1; } &&
+                echo \"Cle GPG: $RECIP\" &&
+                gpg --batch --yes --trust-model always --encrypt --recipient \"$RECIP\" /backups/vault.bak &&
+                rm /backups/vault.bak &&
+                echo 'Chiffrement GPG termine.'
+                "
+            ]
+
+          # --- dump du custom-secret en YAML (monte comme volume) ---
+          - name: dump-secret
+            image: "alpine"
+            volumeMounts:
+              - name: custom-secret-vol
+                mountPath: /secret
+              - name: shared
+                mountPath: /shared
+            command:
+              - "/bin/sh"
+              - "-c"
+            args:
+              - |
+                set -e
+                OUTPUT=/shared/custom-secret.yaml
+                printf 'apiVersion: v1\nkind: Secret\nmetadata:\n  name: custom-secret\n  namespace: bitwarden\ntype: Opaque\ndata:\n' > "$OUTPUT"
+                for f in /secret/*; do
+                  [ -f "$f" ] || continue
+                  KEY=$(basename "$f")
+                  VALUE=$(base64 -w 0 < "$f")
+                  printf '  %s: %s\n' "$KEY" "$VALUE" >> "$OUTPUT"
+                done
+                echo "custom-secret dumpe ($(grep -c '^  ' $OUTPUT) cles)."
+
+          # --- pvc-backup-job.yaml : encrypt-pvcs ---
+          - name: encrypt-pvcs
+            image: "alpine"
+            volumeMounts:
+              - name: dataprotection
+                mountPath: /pvcs/dataprotection
+              - name: attachments
+                mountPath: /pvcs/attachments
+              - name: licenses
+                mountPath: /pvcs/licenses
+              - name: encrypted
+                mountPath: /encrypted
+              - name: gpg-public-key
+                mountPath: /gpg
+            command:
+              - "/bin/sh"
+              - "-c"
+            args:
+              - |
+                set -e
+                apk add --no-cache gnupg -q
+                gpg --import /gpg/public.asc 2>&1 | grep -v "^$" >&2 || true
+                RECIP=$(gpg --list-keys --with-colons --fingerprint | awk -F: '$1=="fpr"{print $10; exit}')
+                [ -n "$RECIP" ] || { echo "ERREUR: impossible d'extraire la cle GPG publique" >&2; exit 1; }
+                echo "Cle GPG: $RECIP"
+
+                encrypt_pvc() {
+                  NAME=$1; SRC=$2
+                  if [ -z "$(ls -A $SRC 2>/dev/null)" ]; then echo "$NAME: vide, skip."; return 0; fi
+                  echo "Chiffrement $NAME..."
+                  tar -czf "/tmp/${NAME}.tar.gz" -C "$SRC" . || { echo "ERREUR: tar $NAME echoue" >&2; exit 1; }
+                  gpg --batch --yes --trust-model always --encrypt --recipient "$RECIP" "/tmp/${NAME}.tar.gz" \
+                    || { echo "ERREUR: gpg encrypt $NAME echoue" >&2; exit 1; }
+                  mv "/tmp/${NAME}.tar.gz.gpg" /encrypted/
+                  echo "$NAME: chiffre OK."
+                }
+
+                encrypt_pvc dataprotection /pvcs/dataprotection
+                encrypt_pvc attachments    /pvcs/attachments
+                encrypt_pvc licenses       /pvcs/licenses
+                echo 'Chiffrement PVCs termine.'
+
+          containers:
+
+          # --- upload-s3 + backup-pvcs fusionnes + latest + nettoyage ---
+          - name: upload-all
+            image: "amazon/aws-cli"
+            env:
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: bitwarden-s3-credentials
+                  key: accessKey
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: bitwarden-s3-credentials
+                  key: secretKey
+            volumeMounts:
+              - name: mssql-backups
+                mountPath: /backups
+              - name: encrypted
+                mountPath: /encrypted
+              - name: shared
+                mountPath: /shared
+            command:
+              - "/bin/sh"
+              - "-c"
+            args:
+              - |
+                set -e
+                S3_ENDPOINT="https://s3.rbx.io.cloud.ovh.net"
+                S3_BASE="s3://database-repairsoft/backup_bitwarden"
+                BACKUP_ID=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+                echo "Backup ID : $BACKUP_ID"
+
+                # Upload DB
+                aws s3 cp /backups/vault.bak.gpg "${S3_BASE}/vault_${BACKUP_ID}.bak.gpg" --endpoint-url "$S3_ENDPOINT"
+                echo "Upload termine : vault_${BACKUP_ID}.bak.gpg"
+
+                # Upload PVCs
+                UPLOADED=0
+                for f in /encrypted/*.gpg; do
+                  [ -f "$f" ] || continue
+                  NAME=$(basename "$f" .tar.gz.gpg)
+                  aws s3 cp "$f" "${S3_BASE}/pvcs/${NAME}_${BACKUP_ID}.tar.gz.gpg" --endpoint-url "$S3_ENDPOINT" \
+                    || { echo "ERREUR: upload $NAME echoue" >&2; exit 1; }
+                  echo "Upload OK : pvcs/${NAME}_${BACKUP_ID}.tar.gz.gpg"
+                  UPLOADED=$((UPLOADED + 1))
+                done
+                [ "$UPLOADED" -gt 0 ] || echo "AVERTISSEMENT: aucun fichier PVC chiffre trouve."
+
+                # Upload custom-secret
+                aws s3 cp /shared/custom-secret.yaml "${S3_BASE}/secrets/custom-secret_${BACKUP_ID}.yaml" --endpoint-url "$S3_ENDPOINT"
+                echo "Upload secret OK : secrets/custom-secret_${BACKUP_ID}.yaml"
+
+                # Mise a jour du fichier latest
+                printf "%s" "$BACKUP_ID" | aws s3 cp - "${S3_BASE}/latest" --endpoint-url "$S3_ENDPOINT"
+                echo "Fichier latest mis a jour : $BACKUP_ID"
+
+                # Nettoyage des backups de plus de 7 jours
+                echo "--- Nettoyage backups > 7 jours ---"
+                CUTOFF=$(date -u -d '7 days ago' +%s)
+                cleanup_prefix() {
+                  PREFIX=$1
+                  aws s3api list-objects-v2 \
+                    --bucket database-repairsoft \
+                    --prefix "backup_bitwarden/${PREFIX}" \
+                    --endpoint-url "$S3_ENDPOINT" \
+                    --output text \
+                    --query 'Contents[].[Key,LastModified]' 2>/dev/null \
+                  | while IFS=$'\t' read KEY LAST_MOD; do
+                      [ -z "$KEY" ] && continue
+                      FILE_EPOCH=$(date -u -d "$LAST_MOD" +%s 2>/dev/null) || continue
+                      if [ "$FILE_EPOCH" -le "$CUTOFF" ]; then
+                        aws s3 rm "s3://database-repairsoft/${KEY}" --endpoint-url "$S3_ENDPOINT"
+                        echo "Supprime : $KEY"
+                      fi
+                    done
+                }
+                cleanup_prefix "vault_"
+                cleanup_prefix "pvcs/"
+                cleanup_prefix "secrets/"
+
+                echo "=== Backup termine : $BACKUP_ID ==="
+
+          volumes:
+            - name: mssql-backups
+              persistentVolumeClaim:
+                claimName: bitwarden-self-host-mssqlbackups
+            - name: encrypted
+              emptyDir: {}
+            - name: dataprotection
+              persistentVolumeClaim:
+                claimName: bitwarden-self-host-dataprotection
+            - name: attachments
+              persistentVolumeClaim:
+                claimName: bitwarden-self-host-attachments
+            - name: licenses
+              persistentVolumeClaim:
+                claimName: bitwarden-self-host-licenses
+            - name: gpg-public-key
+              secret:
+                secretName: bitwarden-gpg-public-key
+            - name: custom-secret-vol
+              secret:
+                secretName: custom-secret
+            - name: shared
+              emptyDir: {}

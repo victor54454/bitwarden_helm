@@ -118,6 +118,16 @@ kubectl create secret generic bitwarden-gpg-private-key -n "$namespace" \
     --from-literal=passphrase="$GPG_PASSPHRASE"
 echo "Secret bitwarden-gpg-private-key cree (temporaire)."
 
+# Cree aussi la cle publique (necessaire pour le CronJob de backup)
+GPG_PUBLIC_TMP=$(mktemp /tmp/bitwarden-public-XXXXXX.asc)
+gpg --import "$GPG_PRIVATE_KEY_PATH" 2>/dev/null || true
+gpg --export --armor > "$GPG_PUBLIC_TMP"
+kubectl delete secret bitwarden-gpg-public-key -n "$namespace" 2>/dev/null || true
+kubectl create secret generic bitwarden-gpg-public-key -n "$namespace" \
+    --from-file=public.asc="$GPG_PUBLIC_TMP"
+rm -f "$GPG_PUBLIC_TMP"
+echo "Secret bitwarden-gpg-public-key cree (pour le CronJob de backup)."
+
 kubectl delete configmap bitwarden-restore-id -n "$namespace" 2>/dev/null || true
 kubectl create configmap bitwarden-restore-id -n "$namespace" --from-literal=id="$RESTORE_ID"
 echo "ConfigMap bitwarden-restore-id cree (id=$RESTORE_ID)."
