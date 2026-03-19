@@ -190,7 +190,7 @@ spec:
 
                 # Upload PVCs
                 UPLOADED=0
-                for f in /encrypted/*.gpg; do
+                for f in /encrypted/*.tar.gz.gpg; do
                   [ -f "$f" ] || continue
                   NAME=$(basename "$f" .tar.gz.gpg)
                   aws s3 cp "$f" "${S3_BASE}/pvcs/${NAME}_${BACKUP_ID}.tar.gz.gpg" --endpoint-url "$S3_ENDPOINT" \
@@ -209,28 +209,28 @@ spec:
                 echo "Fichier latest mis a jour : $BACKUP_ID"
 
                 # Nettoyage des backups de plus de 7 jours
-                #!/bin/bash
-                MAX_BACKUP=21
-                S3="s3://database-repairsoft/"
-                FOLDER_NAME="backup_bitwarden/"
-                ENDPOINT_URL="https://s3.rbx.io.cloud.ovh.net"
-                
-                LISTING=$(aws s3 ls "$S3$FOLDER_NAME" --endpoint-url $ENDPOINT_URL --recursive --human-readable --summarize)
-                BACKUP=$(echo "$LISTING" | grep -E "(vault_|secrets/custom-secret_|pvcs/dataprotection_)" | wc -l)
-                
-                BACKUP_SUPPRIMER=$(($BACKUP - $MAX_BACKUP))
-                echo "$BACKUP_SUPPRIMER"
-                
-                if [ $BACKUP -le $MAX_BACKUP ]
-                then
-                    echo -e "Nombre de backup insufisante : $BACKUP. On doit en avoir 21"
-                else
-                    echo "$LISTING" | grep -E "(vault_|secrets/custom-secret_|pvcs/dataprotection_)" | sort | head -n "$BACKUP_SUPPRIMER" | awk '{print $5}' | while read -r KEY; do 
-                        echo "On supprime le backup :  $S3$KEY"
-                        aws s3 rm "$S3$KEY" --endpoint-url $ENDPOINT_URL
-                    done
-                    echo "Fin de la suppression des backups"
-                fi
+                ##!/bin/bash
+                #MAX_BACKUP=21
+                #S3="s3://database-repairsoft/"
+                #FOLDER_NAME="backup_bitwarden/"
+                #ENDPOINT_URL="https://s3.rbx.io.cloud.ovh.net"
+                #
+                #LISTING=$(aws s3 ls "$S3$FOLDER_NAME" --endpoint-url $ENDPOINT_URL --recursive --human-readable --summarize)
+                #BACKUP=$(echo "$LISTING" | grep -E "(vault_|secrets/custom-secret_|pvcs/dataprotection_)" | wc -l)
+                #
+                #BACKUP_SUPPRIMER=$(($BACKUP - $MAX_BACKUP))
+                #echo "$BACKUP_SUPPRIMER"
+                #
+                #if [ $BACKUP -le $MAX_BACKUP ]
+                #then
+                #    echo -e "Nombre de backup insufisante : $BACKUP. On doit en avoir 21"
+                #else
+                #    echo "$LISTING" | grep -E "(vault_|secrets/custom-secret_|pvcs/dataprotection_)" | sort | head -n "$BACKUP_SUPPRIMER" | awk '{print $5}' | while read -r KEY; do 
+                #        echo "On supprime le backup :  $S3$KEY"
+                #        aws s3 rm "$S3$KEY" --endpoint-url $ENDPOINT_URL
+                #    done
+                #    echo "Fin de la suppression des backups"
+                #fi
                 echo "=== Backup termine : $BACKUP_ID ==="
 
           volumes:
