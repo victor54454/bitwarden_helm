@@ -11,11 +11,9 @@ spec:
   timeZone: "Europe/Paris"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
-  failedJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 
   jobTemplate:
     spec:
-      successfulJobsHistoryLimit: 3  # Garde uniquement les 3 derniers Jobs réussis
-      failedJobsHistoryLimit: 1       # Garde uniquement le dernier Job échoué
       ttlSecondsAfterFinished: 300
       backoffLimit: 0
       template:
@@ -204,28 +202,6 @@ spec:
                 echo "Fichier latest mis a jour : $BACKUP_ID"
 
                 # Nettoyage des backups de plus de 7 jours
-                echo "--- Nettoyage backups > 7 jours ---"
-                CUTOFF=$(date -u -d '7 days ago' +%s)
-                cleanup_prefix() {
-                  PREFIX=$1
-                  aws s3api list-objects-v2 \
-                    --bucket database-repairsoft \
-                    --prefix "backup_bitwarden/${PREFIX}" \
-                    --endpoint-url "$S3_ENDPOINT" \
-                    --output text \
-                    --query 'Contents[].[Key,LastModified]' 2>/dev/null \
-                  | while IFS=$'\t' read KEY LAST_MOD; do
-                      [ -z "$KEY" ] && continue
-                      FILE_EPOCH=$(date -u -d "$LAST_MOD" +%s 2>/dev/null) || continue
-                      if [ "$FILE_EPOCH" -le "$CUTOFF" ]; then
-                        aws s3 rm "s3://database-repairsoft/${KEY}" --endpoint-url "$S3_ENDPOINT"
-                        echo "Supprime : $KEY"
-                      fi
-                    done
-                }
-                cleanup_prefix "vault_"
-                cleanup_prefix "pvcs/"
-                cleanup_prefix "secrets/"
 
                 echo "=== Backup termine : $BACKUP_ID ==="
 

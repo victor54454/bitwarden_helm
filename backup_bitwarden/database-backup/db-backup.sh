@@ -28,9 +28,8 @@ echo ""
 echo "--- Logs en direct ---"
 kubectl logs -n "$namespace" "$POD" --all-containers --prefix -f 2>/dev/null || true
 
-# Verification finale
-SUCCEEDED=$(kubectl get job "$JOB_NAME" -n "$namespace" -o jsonpath='{.status.succeeded}' 2>/dev/null || echo "0")
-if [ "$SUCCEEDED" = "1" ]; then
+# Attendre que le job se termine reellement
+if kubectl wait --for=condition=complete --timeout=300s job/"$JOB_NAME" -n "$namespace" 2>/dev/null; then
     echo ""
     echo "=========================================="
     echo " BACKUP MANUEL TERMINE : OK"
