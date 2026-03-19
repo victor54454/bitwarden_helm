@@ -190,6 +190,7 @@ helm install bitwarden ./bitwarden_helm/self-host \
   --values bitwarden_helm/self-host/values.preprod.yaml \
   --timeout 10m
 ```
+Il ne faut pas oublier de lancer le CronJob dans ```backup_bitwarden/database-backup/backup-cronjob.yaml```
 
 ---
 
@@ -269,18 +270,7 @@ Donc rien de plus simple il faut aller exécuter ce fichier .sh
 
 Comme on peut le voir sur la photo on peut comprendre ce qui est gérer par nous ou par le script.
 
-#### Etape 1 — Lancer le backup (état actuel avec ton compte)
-
-```bash 
-cd /home/orktk/bitwarden_helm
-```
-```bash 
-bash backup_bitwarden/database-backup/db-backup.sh
-```
-
-Attend que les 3 étapes (BDD + Secret + PVCs) se terminent avec succès.
-
-#### Etape 2 — Simuler le sinistre (désinstaller Bitwarden)
+#### Etape 1 — Simuler le sinistre (désinstaller Bitwarden)
 
 ```bash 
 helm uninstall bitwarden -n bitwarden
@@ -291,11 +281,11 @@ Puis vérifie que tout est bien parti :
 kubectl get pods -n bitwarden
 ```
 
-#### Etape 3 — Lancer le full-restore
+#### Etape 2 — Lancer le full-restore
 ```bash 
 bash backup_bitwarden/database-restore/full-restore.sh
 ```
-Il va te demander les identifiants MinIO et l'endroit où se situe la clef privée qui va avec la clef publique qui a chiffré le backup, puis faire une pause pour que tu relances helm install manuellement sur un autre terminal. Une fois helm install terminé, il faudra revenir sur l'ancien terminal pour appuyer sur entrée.
+Il va te demander les identifiants MinIO et l'endroit où se situe la clef privée qui va avec la clef publique qui a chiffré le backup, puis faire une pause pour que tu relances helm install manuellement sur un autre terminal. Une fois helm install et terminé, il faudra revenir sur l'ancien terminal pour appuyer sur entrée.
 
-#### Etape 4 — Vérifier
+#### Etape 3 — Vérifier
 Une fois tout terminé, connecte-toi sur l'interface Bitwarden et vérifie que ton compte est bien là.
