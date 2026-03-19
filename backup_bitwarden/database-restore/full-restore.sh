@@ -141,26 +141,25 @@ if [ "$MODE" = "complet" ]; then
     echo " 1/4 Restore secret Kubernetes (custom-secret)"
     echo "=========================================="
 
-    kubectl delete pod mc-secret-restore -n "$namespace" 2>/dev/null || true
-    kubectl run mc-secret-restore \
-        --restart=Never -n "$namespace" --image=amazon/aws-cli \
-        --env="AWS_ACCESS_KEY_ID=${ACCESS_KEY}" \
-        --env="AWS_SECRET_ACCESS_KEY=${SECRET_KEY}" \
-        --env="RESTORE_ID=${RESTORE_ID}" \
-        --command -- sh -c \
-        'set -e; echo "Telechargement secrets/custom-secret_${RESTORE_ID}.yaml..."; aws s3 cp "s3://database-repairsoft/backup_bitwarden/secrets/custom-secret_${RESTORE_ID}.yaml" - --endpoint-url https://s3.rbx.io.cloud.ovh.net'
+    kubectl delete job -n "$namespace" -l app=bitwarden-secret-restore 2>/dev/null || true
+    sleep 2
+    kubectl apply -n "$namespace" -f "$SCRIPT_DIR/secret-restore-job.yaml"
 
-    kubectl wait pod/mc-secret-restore -n "$namespace" \
-        --for=jsonpath='{.status.phase}'=Succeeded --timeout=60s 2>/dev/null || {
-        PHASE=$(kubectl get pod mc-secret-restore -n "$namespace" -o jsonpath='{.status.phase}' 2>/dev/null || echo "?")
-        echo "ERREUR : telechargement secret echoue (phase=$PHASE)" >&2
-        kubectl logs -n "$namespace" mc-secret-restore 2>/dev/null >&2 || true
-        kubectl delete pod mc-secret-restore -n "$namespace" 2>/dev/null || true
-        exit 1
-    }
+    echo -n "  Démarrage"
+    until kubectl get pods -n "$namespace" -l "app=bitwarden-secret-restore" --no-headers 2>/dev/null | grep -q .; do
+        echo -n "."; sleep 1
+    done
+    echo ""
 
-    kubectl logs -n "$namespace" mc-secret-restore | sed -n '/^apiVersion:/,$p' | kubectl apply -f -
-    kubectl delete pod mc-secret-restore -n "$namespace" 2>/dev/null || true
+    POD_SECRET=$(kubectl get pods -n "$namespace" -l "app=bitwarden-secret-restore" -o jsonpath='{.items[0].metadata.name}')
+    echo "  Pod : $POD_SECRET"
+
+    echo "  --- download-s3 ---"
+    kubectl logs -n "$namespace" "$POD_SECRET" -c download-s3 -f 2>/dev/null || true
+    echo "  --- decrypt-output ---"
+    kubectl logs -n "$namespace" "$POD_SECRET" -c decrypt-output -f 2>/dev/null | kubectl apply -f -
+
+    check_job bitwarden-secret-restore 60
     echo "Secret custom-secret restaure."
 
     # ============================================================
