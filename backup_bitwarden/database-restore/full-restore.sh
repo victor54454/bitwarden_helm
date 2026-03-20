@@ -154,10 +154,33 @@ if [ "$MODE" = "complet" ]; then
     POD_SECRET=$(kubectl get pods -n "$namespace" -l "app=bitwarden-secret-restore" -o jsonpath='{.items[0].metadata.name}')
     echo "  Pod : $POD_SECRET"
 
+    echo -n "  Attente init container (download-s3)"
+    until kubectl get pod -n "$namespace" "$POD_SECRET" \
+        -o jsonpath='{.status.initContainerStatuses[0].state.running.startedAt}' 2>/dev/null | grep -q .; do
+        echo -n "."; sleep 1
+    done
+    echo ""
+
     echo "  --- download-s3 ---"
     kubectl logs -n "$namespace" "$POD_SECRET" -c download-s3 -f 2>/dev/null || true
+
+    echo -n "  Attente container principal (decrypt-output)"
+    until kubectl get pod -n "$namespace" "$POD_SECRET" \
+        -o jsonpath='{.status.containerStatuses[0].state.running.startedAt}' 2>/dev/null | grep -q .; do
+        echo -n "."; sleep 1
+    done
+    echo ""
+
     echo "  --- decrypt-output ---"
-    kubectl logs -n "$namespace" "$POD_SECRET" -c decrypt-output -f 2>/dev/null | kubectl apply -f -
+    DECRYPT_TMP=$(mktemp)
+    kubectl logs -n "$namespace" "$POD_SECRET" -c decrypt-output -f 2>/dev/null > "$DECRYPT_TMP" || true
+    if [ ! -s "$DECRYPT_TMP" ]; then
+        echo "ERREUR: le container decrypt-output n'a produit aucune sortie (mauvaise passphrase ?)" >&2
+        rm -f "$DECRYPT_TMP"
+        exit 1
+    fi
+    kubectl apply -f "$DECRYPT_TMP"
+    rm -f "$DECRYPT_TMP"
 
     check_job bitwarden-secret-restore 60
     echo "Secret custom-secret restaure."
