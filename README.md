@@ -116,6 +116,7 @@ kubectl create secret generic bitwarden-s3-credentials -n bitwarden \
 ```
 Pour le coup, le projet a été fait pour fonctionner avec un stockage S3 de chez OVH, c'est celui que j'ai utilisé pour faire mes tests. 
 Après, il suffit juste de modifier tous les fichiers dans backup_bitwarden pour qu'ils aillent pointer sur Minio. 
+
 ---
 
 ## 5. Création du namespace Bitwarden
@@ -289,3 +290,12 @@ Il va te demander les identifiants MinIO et l'endroit où se situe la clef priv�
 
 #### Etape 3 — Vérifier
 Une fois tout terminé, connecte-toi sur l'interface Bitwarden et vérifie que ton compte est bien là.
+
+## 12. Commande AWS S3 
+### Comment voir le nombre de backup dans le S3 
+```bash
+aws s3 ls "s3://database-repairsoft/backup_bitwarden/" --endpoint-url "https://s3.rbx.io.cloud.ovh.net" --recursive --human-readable --summarize
+```
+A condition de bien avoir remplie le : 
+
+![alt text](photo/image2.png)
