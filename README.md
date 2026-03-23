@@ -181,9 +181,15 @@ kubectl create secret tls tls-secret \
   -n bitwarden
 ```
 
+## 8. Création du secret de chiffrement des backups 
+```bash 
+kubectl create secret generic bitwarden-gpg-public-key \
+  --from-file=public.asc=/tmp/public.asc \
+  -n bitwarden
+```
 ---
 
-## 8. Déploiement de Bitwarden avec Helm
+## 9. Déploiement de Bitwarden avec Helm
 
 ```bash
 helm install bitwarden ./bitwarden_helm/self-host \
@@ -195,7 +201,7 @@ Il ne faut pas oublier de lancer le CronJob dans ```backup_bitwarden/database-ba
 
 ---
 
-## 9. Suppression de Bitwarden
+## 10. Suppression de Bitwarden
 
 ### Désinstallation Helm
 
@@ -211,7 +217,7 @@ kubectl delete namespace local-path-storage
 kubectl delete namespace ingress-nginx
 ```
 
-## 10. Déchiffrement des backups : 
+## 11. Déchiffrement des backups : 
 ### Clef GPG : 
 Clef public = chiffrement 
 Clef priver = déchiffrement
@@ -258,7 +264,7 @@ Donc la dans cette partie nous parlons de chiffrement. Comme nous allons l'utili
 Donc il faudra générer une paire de clef comme celle montrais en exemple, avec une pass phrase. 
 Comme sur chaque serveur nous aurons kubectl de configurer 
 
-## 11. Les backups et comment en faire et comment les réinjecter :
+## 12. Les backups et comment en faire et comment les réinjecter :
 
 ### Faire une backup : 
 
@@ -291,7 +297,7 @@ Il va te demander les identifiants MinIO et l'endroit où se situe la clef priv�
 #### Etape 3 — Vérifier
 Une fois tout terminé, connecte-toi sur l'interface Bitwarden et vérifie que ton compte est bien là.
 
-## 12. Commande AWS S3 
+## 13. Commande AWS S3 
 ### Comment voir le nombre de backup dans le S3 
 ```bash
 aws s3 ls "s3://database-repairsoft/backup_bitwarden/" --endpoint-url "https://s3.rbx.io.cloud.ovh.net" --recursive --human-readable --summarize

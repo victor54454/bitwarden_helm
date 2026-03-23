@@ -8,7 +8,7 @@ metadata:
     app.kubernetes.io/component: bitwarden-backup
     app: bitwarden-backup
 spec:
-  schedule: "1 12 * * *"
+  schedule: "20 15 * * *"
   timeZone: "Europe/Paris"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
