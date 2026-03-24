@@ -219,6 +219,8 @@ kubectl delete namespace ingress-nginx
 
 ## 11. Déchiffrement des backups : 
 ### Clef GPG : 
+Les fichiées de backup et de restauration peuvent sans aucun problèmes s'utiliser avec kubectl. Nous devons avoir les clefs public et privée pour pouvoir chiffrée comme pour déchifré. 
+On peut les pakcée dans le dossier tmp. 
 Clef public = chiffrement 
 Clef priver = déchiffrement
 Il faut donc vérifier que vous avez la bonne clef de chiffrement sur le nodes qui a bitwarden: 

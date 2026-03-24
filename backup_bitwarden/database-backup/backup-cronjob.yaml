@@ -12,7 +12,7 @@ spec:
   timeZone: "Europe/Paris"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
-  failedJobsHistoryLimit: 
+  failedJobsHistoryLimit: 3
   jobTemplate:
     spec:
       ttlSecondsAfterFinished: 300
