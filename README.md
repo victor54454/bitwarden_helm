@@ -160,11 +160,13 @@ kubectl create secret generic custom-secret -n bitwarden \
 | `adminSettings__admins` | Adresse(s) email(s) des comptes administrateurs Bitwarden |
 
 ### Création du secret pour le whebook discord pour l'envoie de notif a la fin des backups : 
+
 ```bash
 kubectl create secret generic bitwarden-discord-webhook -n bitwarden \
   --from-literal=url="https://discord.com/api/webhooks/1486677619033505933/iNiMhaj2rPg85czJ9xZmki5XYeUhNPW1VJheCMFsOegMf0BXhMinZOFeyYRhICb7is13"
 
 ```
+
 ### Vérification du secret
 
 ```bash
@@ -189,6 +191,7 @@ kubectl create secret tls tls-secret \
   --cert fullchain.pem \
   -n bitwarden
 ```
+--- 
 
 ## 9. Création du secret de chiffrement des backups 
 ```bash 
@@ -275,6 +278,8 @@ Donc la dans cette partie nous parlons de chiffrement. Comme nous allons l'utili
 Donc il faudra générer une paire de clef comme celle montrais en exemple, avec une pass phrase. 
 Comme sur chaque serveur nous aurons kubectl de configurer 
 
+---
+
 ## 13. Les backups et comment en faire et comment les réinjecter :
 
 ### Faire une backup : 
@@ -307,6 +312,8 @@ Il va te demander les identifiants MinIO et l'endroit où se situe la clef priv�
 
 #### Etape 3 — Vérifier
 Une fois tout terminé, connecte-toi sur l'interface Bitwarden et vérifie que ton compte est bien là.
+
+---
 
 ## 14. Commande AWS S3 
 ### Comment voir le nombre de backup dans le S3 
