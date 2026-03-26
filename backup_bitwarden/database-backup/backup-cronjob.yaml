@@ -84,6 +84,8 @@ spec:
             volumeMounts:
               - name: custom-secret-vol
                 mountPath: /secret
+              - name: discord-webhook-vol
+                mountPath: /discord-webhook
               - name: shared
                 mountPath: /shared
             command:
@@ -101,6 +103,16 @@ spec:
                   printf '  %s: %s\n' "$KEY" "$VALUE" >> "$OUTPUT"
                 done
                 echo "custom-secret dumpe ($(grep -c '^  ' $OUTPUT) cles)."
+                if [ -n "$(ls -A /discord-webhook 2>/dev/null)" ]; then
+                  printf '\n---\napiVersion: v1\nkind: Secret\nmetadata:\n  name: bitwarden-discord-webhook\n  namespace: bitwarden\ntype: Opaque\ndata:\n' >> "$OUTPUT"
+                  for f in /discord-webhook/*; do
+                    [ -f "$f" ] || continue
+                    KEY=$(basename "$f")
+                    VALUE=$(base64 -w 0 < "$f")
+                    printf '  %s: %s\n' "$KEY" "$VALUE" >> "$OUTPUT"
+                  done
+                  echo "bitwarden-discord-webhook dumpe."
+                fi
 
           # --- pvc-backup-job.yaml : encrypt-pvcs ---
           - name: encrypt-pvcs
@@ -170,8 +182,8 @@ spec:
             - name: DISCORD_WEBHOOK_URL
               valueFrom:
                 secretKeyRef:
-                  name: custom-secret
-                  key: discord-webhook-url
+                  name: bitwarden-discord-webhook
+                  key: url
                   optional: true
             volumeMounts:
               - name: mssql-backups
@@ -275,5 +287,9 @@ spec:
             - name: custom-secret-vol
               secret:
                 secretName: custom-secret
+            - name: discord-webhook-vol
+              secret:
+                secretName: bitwarden-discord-webhook
+                optional: true
             - name: shared
               emptyDir: {}

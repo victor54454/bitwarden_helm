@@ -161,8 +161,9 @@ kubectl create secret generic custom-secret -n bitwarden \
 
 ### Création du secret pour le whebook discord pour l'envoie de notif a la fin des backups : 
 ```bash
-kubectl create secret generic custom-secret -n bitwarden \
-  --from-literal=discord-webhook-url="https://discordapp.com/api/webhooks/..."
+kubectl create secret generic bitwarden-discord-webhook -n bitwarden \
+  --from-literal=url="https://discord.com/api/webhooks/1486677619033505933/iNiMhaj2rPg85czJ9xZmki5XYeUhNPW1VJheCMFsOegMf0BXhMinZOFeyYRhICb7is13"
+
 ```
 ### Vérification du secret
 
