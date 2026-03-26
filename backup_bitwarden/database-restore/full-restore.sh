@@ -195,7 +195,7 @@ if [ "$MODE" = "complet" ]; then
     echo ""
     echo "Lancez dans un autre terminal (depuis le dossier parent de bitwarden_helm) :"
     echo ""
-    echo "  helm install bitwarden bitwarden_helm/self-host \\"
+    echo "  helm install bitwarden bitwarden/self-host \\"
     echo "    --namespace bitwarden \\"
     echo "    --values bitwarden_helm/self-host/values.preprod.yaml"
     echo ""

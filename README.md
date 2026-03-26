@@ -16,7 +16,7 @@ Ce document décrit le déploiement de Bitwarden self-hosted sur un cluster Kube
 - Accès administrateur au cluster
 - Certificats TLS (`tls.crt` et `tls.key`)
 - Fichier `values.preprod.yaml` prêt pour Bitwarden
-
+- Dossier tmp/ qui contient les clefs de chiffrement et de déchiffrement.
 ---
 
 ## 1. Déploiement de l'Ingress NGINX
@@ -159,7 +159,11 @@ kubectl create secret generic custom-secret -n bitwarden \
 | `SA_PASSWORD` | Mot de passe du compte SQL Server utilisé par Bitwarden |
 | `adminSettings__admins` | Adresse(s) email(s) des comptes administrateurs Bitwarden |
 
-
+### Création du secret pour le whebook discord pour l'envoie de notif a la fin des backups : 
+```bash
+kubectl create secret generic custom-secret -n bitwarden \
+  --from-literal=discord-webhook-url="https://discordapp.com/api/webhooks/..."
+```
 ### Vérification du secret
 
 ```bash

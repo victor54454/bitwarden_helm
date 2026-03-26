@@ -167,6 +167,12 @@ spec:
                 secretKeyRef:
                   name: bitwarden-s3-credentials
                   key: secretKey
+            - name: DISCORD_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: custom-secret
+                  key: discord-webhook-url
+                  optional: true
             volumeMounts:
               - name: mssql-backups
                 mountPath: /backups
@@ -180,6 +186,19 @@ spec:
             args:
               - |
                 set -e
+
+                notify_discord() {
+                  [ -n "${DISCORD_WEBHOOK_URL:-}" ] || return 0
+                  curl -s -o /dev/null -X POST "$DISCORD_WEBHOOK_URL" \
+                    -H "Content-Type: application/json" \
+                    -d "{\"content\": \"$1\"}"
+                }
+                on_exit() {
+                  RC=$?
+                  [ $RC -eq 0 ] || notify_discord ":x: **Backup Bitwarden ECHOUE** (code $RC) — ID: ${BACKUP_ID:-inconnu}"
+                }
+                trap on_exit EXIT
+
                 S3_ENDPOINT="https://s3.rbx.io.cloud.ovh.net"
                 S3_BASE="s3://database-repairsoft/backup_bitwarden"
                 BACKUP_ID=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
@@ -232,6 +251,7 @@ spec:
                     done
                     echo "Fin de la suppression des backups"
                 fi
+                notify_discord ":white_check_mark: **Backup Bitwarden OK** — ID: $BACKUP_ID"
                 echo "=== Backup termine : $BACKUP_ID ==="
 
           volumes:
