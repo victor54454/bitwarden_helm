@@ -201,13 +201,15 @@ spec:
 
                 notify_discord() {
                   [ -n "${DISCORD_WEBHOOK_URL:-}" ] || return 0
+                  MSG="$1"; COLOR="$2"
+                  DATE_DISPLAY=$(python3 -c "import datetime; n=datetime.datetime.utcnow(); off=2 if 4<=n.month<=9 else 1; print((n+datetime.timedelta(hours=off)).strftime('%Y-%m-%d %H:%M:%S'))")
                   curl -s -o /dev/null -X POST "$DISCORD_WEBHOOK_URL" \
                     -H "Content-Type: application/json" \
-                    -d "{\"content\": \"$1\"}"
+                    -d "{\"username\":\"bitwarden\",\"embeds\":[{\"title\":\"\\ud83d\\uddc4\\ufe0f Backup Status\",\"color\":${COLOR},\"fields\":[{\"name\":\"Statut\",\"value\":\"${MSG}\",\"inline\":false},{\"name\":\"\\ud83d\\udcc5 Date\",\"value\":\"${DATE_DISPLAY}\",\"inline\":false}],\"footer\":{\"text\":\"RepairSoft Backup System\"}}]}"
                 }
                 on_exit() {
                   RC=$?
-                  [ $RC -eq 0 ] || notify_discord ":x: **Backup Bitwarden ECHOUE** (code $RC) — ID: ${BACKUP_ID:-inconnu}"
+                  [ $RC -eq 0 ] || notify_discord "Backup ECHOUE :x: (code $RC)" 15158332
                 }
                 trap on_exit EXIT
 
@@ -263,7 +265,7 @@ spec:
                     done
                     echo "Fin de la suppression des backups"
                 fi
-                notify_discord ":white_check_mark: **Backup Bitwarden OK** — ID: $BACKUP_ID"
+                notify_discord "Backup termine avec succes :white_check_mark:" 3066993
                 echo "=== Backup termine : $BACKUP_ID ==="
 
           volumes:
