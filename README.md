@@ -16,15 +16,16 @@ Ce document décrit le déploiement de Bitwarden self-hosted sur un cluster Kube
 - Accès administrateur au cluster
 - Certificats TLS (`tls.crt` et `tls.key`)
 - Fichier `values.preprod.yaml` prêt pour Bitwarden
-- Dossier tmp/ qui contient les clefs de chiffrement et de déchiffrement.
+- Dossier `tmp/` contenant les clés de chiffrement et de déchiffrement
+
 ---
 
 ## 1. Déploiement de l'Ingress NGINX
 
-### Ajout du repo helm de bitwarden 
+### Ajout du repo Helm de Bitwarden
 
 ```bash
- helm repo add bitwarden https://charts.bitwarden.com/
+helm repo add bitwarden https://charts.bitwarden.com/
 ```
 ```bash
 helm repo update
@@ -35,9 +36,13 @@ kubectl create namespace bitwarden
 ```bash
 helm search repo bitwarden
 ```
-Comme on peut le voir on a deux repo ajouter grâce a la commande helm repo add. 
-Donc si c'est la première instal pour bitwarden il faut suivre la suite du tuto pour crée les secrets l'ingress etc...
-Par contre si c'est pour une restore il faut biensur crée le ingress et les pvc si c'est pas deja fais et ensuite lancée le script de restoration.
+
+La commande `helm search repo` confirme l'ajout des deux repos.
+
+Deux cas de figure :
+- **Première installation** : suivre l'intégralité de la procédure ci-dessous (secrets, ingress, etc.).
+- **Restauration** : créer l'ingress et les PVC s'ils n'existent pas, puis lancer directement le script de restauration (section 9).
+
 ### Création du namespace
 
 ```bash
@@ -61,29 +66,38 @@ kubectl wait --namespace ingress-nginx \
 
 ---
 
-## 2. Gestion des StorageClass et des volumes gérer par Rancher 
+## 2. StorageClass et volumes gérés par Rancher
 
 ### Création du provisionner pour alimenter les PVCs
+
 ```bash
 kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.24/deploy/local-path-storage.yaml
 ```
 
 ### Vérification de la StorageClass
+
 ```bash
 kubectl get storageclass
 ```
 
-### Supprimer le StorageClass en mode delete 
+### Suppression de la StorageClass en mode delete
+
 ```bash
 kubectl delete storageclass local-path
 ```
 
-### Pour les supprimer 
+### Suppression d'une StorageClass quelconque
+
 ```bash
 kubectl delete storageclass <NAME>
 ```
 
-### Si on utilise minio pour le stockage S3 pour faire des tests : 
+---
+
+## 3. Stockage S3
+
+### Option MinIO (tests)
+
 ```yaml
 services:
   minio:
@@ -103,35 +117,39 @@ services:
 volumes:
   minio-data:
 ```
-Voici un exemple de docker compose que l'on peut utilise pour minio. 
-Mais en plus de cela il nous faut récupérer notre acces key et secret key de minio donc une fois que nous avons lancer minio il suffit de aller dans le menu a gauche dans Acces Keys et en crée une nouvelles.
-Comme on peut le voir les fichiers dans backup_bitwarden ce sont eux qui vont nous aider a faire les backups de bitwarden et c'est restore. 
-Donc on vas légérement modifier les fichier .sh pour intégré le faites qu'il faut aller sauvegarder les backups sur Minio et aller les chercher sur minio. 
 
-Ou allons-nous stockée donc c'est deux clef acces key et secret key. 
-Dans un secret Kubernetes : 
-```bash 
+Exemple de docker-compose utilisable pour MinIO.
+
+Une fois MinIO lancé, générer une access key et une secret key depuis le menu latéral, section **Access Keys**.
+
+Les fichiers du dossier `backup_bitwarden` gèrent les backups et leur restauration. Ils doivent être adaptés pour pointer vers MinIO.
+
+### Stockage des clés dans un secret Kubernetes
+
+```bash
 kubectl create secret generic bitwarden-minio-credentials \
   --namespace bitwarden \
-  --from-literal=accessKey=TON_ACCESS_KEY \
-  --from-literal=secretKey=TON_SECRET_KEY
+  --from-literal=accessKey=<ACCESS_KEY> \
+  --from-literal=secretKey=<SECRET_KEY>
 ```
-A garder c'est très important les clef de minio.
 
-Donc, si vous utilisez par exemple OVH pour votre stockage S3, il faudra légèrement adapter le secret Kub pour qu'il puisse être reconnu par le système quand il se fera appeler. 
+⚠️ Les clés MinIO doivent être conservées.
 
-Il faudra le crée de cette manière : 
-```bash 
+### Option OVH
+
+Le secret Kubernetes doit être adapté pour être reconnu par le système lors de son appel :
+
+```bash
 kubectl create secret generic bitwarden-s3-credentials -n bitwarden \
-  --from-literal=accessKey="<TON_ACCESS_KEY_OVH>" \
-  --from-literal=secretKey="<TON_SECRET_KEY_OVH>"
+  --from-literal=accessKey="<ACCESS_KEY_OVH>" \
+  --from-literal=secretKey="<SECRET_KEY_OVH>"
 ```
-Pour le coup, le projet a été fait pour fonctionner avec un stockage S3 de chez OVH, c'est celui que j'ai utilisé pour faire mes tests. 
-Après, il suffit juste de modifier tous les fichiers dans backup_bitwarden pour qu'ils aillent pointer sur Minio. 
+
+Le projet a été conçu pour fonctionner avec un stockage S3 OVH — c'est la configuration utilisée pour les tests. Pour basculer sur MinIO, il suffit de modifier les fichiers du dossier `backup_bitwarden`.
 
 ---
 
-## 5. Création des secrets Bitwarden
+## 4. Création des secrets Bitwarden
 
 Les informations sensibles sont stockées dans un secret Kubernetes.
 
@@ -152,22 +170,21 @@ kubectl create secret generic custom-secret -n bitwarden \
 
 | Variable | Description |
 |---|---|
-|`globalSettings__installation__id` | https://bitwarden.com/fr-fr/host/ |
-|`globalSettings__installation__key` | https://bitwarden.com/fr-fr/host/ |
-|`globalSettings__mail__smtp__username` | Adresse mail qui envoie les mails de créeation de compte etc ... |
-|`globalSettings__mail__smtp__password` | Mot de passe application de l'adresse mail | 
+| `globalSettings__installation__id` | https://bitwarden.com/fr-fr/host/ |
+| `globalSettings__installation__key` | https://bitwarden.com/fr-fr/host/ |
+| `globalSettings__mail__smtp__username` | Adresse mail émettrice des mails de création de compte |
+| `globalSettings__mail__smtp__password` | Mot de passe application de l'adresse mail |
 | `SA_PASSWORD` | Mot de passe du compte SQL Server utilisé par Bitwarden |
 | `adminSettings__admins` | Adresse(s) email(s) des comptes administrateurs Bitwarden |
 
-### Création du secret pour le whebook discord pour l'envoie de notif a la fin des backups : 
+### Secret du webhook Discord (notifications de fin de backup)
 
 ```bash
 kubectl create secret generic bitwarden-discord-webhook -n bitwarden \
-  --from-literal=url="https://discord.com/api/webhooks/1486677619033505933/iNiMhaj2rPg85czJ9xZmki5XYeUhNPW1VJheCMFsOegMf0BXhMinZOFeyYRhICb7is13"
-
+  --from-literal=url="https://discord.com/api/webhooks/<ID>/<TOKEN>"
 ```
 
-### Vérification du secret
+### Vérification des secrets
 
 ```bash
 kubectl get secret -n bitwarden
@@ -175,15 +192,16 @@ kubectl get secret -n bitwarden
 
 ---
 
-## 8. Création du secret TLS
+## 5. Création du secret TLS
 
 Les certificats TLS sont nécessaires pour l'accès HTTPS.
-```bash 
+
+```bash
 openssl req -x509 -nodes -days 365 -newkey ec \
   -pkeyopt ec_paramgen_curve:P-256 \
   -keyout privkey.pem \
   -out fullchain.pem \
-  -subj "/CN=192.168.10.139.nip.io"
+  -subj "/CN=<IP>.nip.io"
 ```
 ```bash
 kubectl create secret tls tls-secret \
@@ -191,17 +209,20 @@ kubectl create secret tls tls-secret \
   --cert fullchain.pem \
   -n bitwarden
 ```
---- 
 
-## 9. Création du secret de chiffrement des backups 
-```bash 
+---
+
+## 6. Création du secret de chiffrement des backups
+
+```bash
 kubectl create secret generic bitwarden-gpg-public-key \
   --from-file=public.asc=/tmp/public.asc \
   -n bitwarden
 ```
+
 ---
 
-## 10. Déploiement de Bitwarden avec Helm
+## 7. Déploiement de Bitwarden avec Helm
 
 ```bash
 helm install bitwarden ./bitwarden_helm/self-host \
@@ -209,54 +230,46 @@ helm install bitwarden ./bitwarden_helm/self-host \
   --values bitwarden_helm/self-host/values.preprod.yaml \
   --timeout 10m
 ```
-Il ne faut pas oublier de lancer le CronJob dans ```backup_bitwarden/database-backup/backup-cronjob.yaml```
+
+⚠️ Ne pas oublier de lancer le CronJob : `backup_bitwarden/database-backup/backup-cronjob.yaml`
 
 ---
 
-## 11. Suppression de Bitwarden
+## 8. Chiffrement et déchiffrement des backups
 
-### Désinstallation Helm
+### Clés GPG
 
-```bash
-helm uninstall bitwarden -n bitwarden
-```
+Les scripts de backup et de restauration s'utilisent avec `kubectl`. Les clés publique et privée sont toutes deux nécessaires : la publique pour chiffrer, la privée pour déchiffrer. Elles peuvent être placées dans le dossier `tmp/`.
 
-### Suppression des namespaces
+Vérifier la présence de la clé de chiffrement sur le node hébergeant Bitwarden :
 
 ```bash
-kubectl delete namespace bitwarden
-kubectl delete namespace local-path-storage
-kubectl delete namespace ingress-nginx
+gpg --list-keys
 ```
 
-## 12. Déchiffrement des backups : 
-### Clef GPG : 
-Les fichiées de backup et de restauration peuvent sans aucun problèmes s'utiliser avec kubectl. Nous devons avoir les clefs public et privée pour pouvoir chiffrée comme pour déchifré. 
-On peut les pakcée dans le dossier tmp. 
-Clef public = chiffrement 
-Clef priver = déchiffrement
-Il faut donc vérifier que vous avez la bonne clef de chiffrement sur le nodes qui a bitwarden: 
-```bash
-gpg --list-keys 
-```
-Il faut aussi vérifier que nous avons la bonne clef de déchiffrement sur nodes qui a bitwarden :
+Vérifier la présence de la clé de déchiffrement sur ce même node :
+
 ```bash
 gpg --list-secret-keys
-``` 
-#### Exemple de sortie pour clef public : 
-```bash 
-victor@kube:~/bitwarden_helm/partage_nfs$ gpg --list-key
-/home/victor/.gnupg/pubring.kbx
+```
+
+#### Exemple de sortie — clé publique
+
+```bash
+user@host:~/bitwarden_helm/partage_nfs$ gpg --list-key
+/home/user/.gnupg/pubring.kbx
 -------------------------------
 pub   ed25519 2026-02-25 [SC]
       A0D9F405586AC6EE76E85CDB70169E6628FB20FC
-uid           [ultimate] Bitwarden Backup <questmk320@tuta.io>
+uid           [ultimate] Bitwarden Backup <exemple@exemple.fr>
 sub   cv25519 2026-02-25 [E]
 ```
-#### Exemple de sortie pour clef priver: 
-```bash 
-orktk@centaurus:~/victor/minio$ gpg --list-secret-keys
-/home/orktk/.gnupg/pubring.kbx
+
+#### Exemple de sortie — clé privée
+
+```bash
+user@host:~/minio$ gpg --list-secret-keys
+/home/user/.gnupg/pubring.kbx
 ------------------------------
 sec   rsa4096 2025-10-01 [SC]
       FE9E26892B7CCA1A58E934871DC9CFA13D696195
@@ -268,58 +281,65 @@ sec   ed25519 2026-02-26 [SC]
 uid          [  ultime ] Bitwarden Backup
 ssb   cv25519 2026-02-26 [E]
 ```
----
+
+### Déchiffrer un backup
 
 ```bash
- gpg --decrypt vault_XXXXXXXX.bak.gpg > vault_restored.bak
+gpg --decrypt vault_XXXXXXXX.bak.gpg > vault_restored.bak
 ```
 
-Donc la dans cette partie nous parlons de chiffrement. Comme nous allons l'utiliser pour les backups de bitwarden. 
-Donc il faudra générer une paire de clef comme celle montrais en exemple, avec une pass phrase. 
-Comme sur chaque serveur nous aurons kubectl de configurer 
+Le chiffrement est utilisé pour les backups de Bitwarden. Une paire de clés protégée par passphrase doit être générée sur le modèle des exemples ci-dessus. `kubectl` est configuré sur chaque serveur concerné.
 
 ---
 
-## 13. Les backups et comment en faire et comment les réinjecter :
+## 9. Backup et restauration
 
-### Faire une backup : 
+### Créer un backup
 
-Donc rien de plus simple il faut aller exécuter ce fichier .sh 
+```bash
+bash bitwarden_helm/backup_bitwarden/database-backup/db-backup.sh
+```
 
-```bash bitwarden_helm/backup_bitwarden/database-backup/db-backup.sh```. 
+### Restaurer un backup dans une nouvelle instance Bitwarden
 
-### Faire une restoration de la backup dans un nouveau bitwarden : 
-![alt text](photo/image.png)
+![Répartition des étapes manuelles et automatisées](photo/image.png)
 
-Comme on peut le voir sur la photo on peut comprendre ce qui est gérer par nous ou par le script.
+Le tableau ci-dessus détaille la répartition entre les étapes manuelles et celles prises en charge par le script.
 
-#### Etape 1 — Simuler le sinistre (désinstaller Bitwarden)
+#### Étape 1 — Simuler le sinistre (désinstaller Bitwarden)
 
-```bash 
+```bash
 helm uninstall bitwarden -n bitwarden
 ```
-Puis vérifie que tout est bien parti :
 
-```bash 
+Vérifier que les ressources sont supprimées :
+
+```bash
 kubectl get pods -n bitwarden
 ```
 
-#### Etape 2 — Lancer le full-restore
-```bash 
+#### Étape 2 — Lancer le full-restore
+
+```bash
 bash backup_bitwarden/database-restore/full-restore.sh
 ```
-Il va te demander les identifiants MinIO et l'endroit où se situe la clef privée qui va avec la clef publique qui a chiffré le backup, puis faire une pause pour que tu relances helm install manuellement sur un autre terminal. Une fois helm install et terminé, il faudra revenir sur l'ancien terminal pour appuyer sur entrée.
 
-#### Etape 3 — Vérifier
-Une fois tout terminé, connecte-toi sur l'interface Bitwarden et vérifie que ton compte est bien là.
+Le script demande les identifiants MinIO et l'emplacement de la clé privée correspondant à la clé publique ayant chiffré le backup. Il marque ensuite une pause pour permettre de lancer `helm install` manuellement depuis un autre terminal. Une fois `helm install` terminé, revenir au terminal initial et valider avec Entrée.
+
+#### Étape 3 — Vérifier
+
+Se connecter à l'interface Bitwarden et vérifier la présence des comptes restaurés.
 
 ---
 
-## 14. Commande AWS S3 
-### Comment voir le nombre de backup dans le S3 
-```bash
-aws s3 ls "s3://database-repairsoft/backup_bitwarden/" --endpoint-url "https://s3.rbx.io.cloud.ovh.net" --recursive --human-readable --summarize
-```
-A condition de bien avoir remplie le : 
+## 10. Commandes AWS S3
 
-![alt text](photo/image2.png)
+### Lister les backups présents sur le S3
+
+```bash
+aws s3 ls "s3://<BUCKET>/backup_bitwarden/" --endpoint-url "https://s3.rbx.io.cloud.ovh.net" --recursive --human-readable --summarize
+```
+
+Prérequis : la configuration AWS CLI doit être renseignée.
+
+![Configuration AWS CLI](photo/image2.png)
